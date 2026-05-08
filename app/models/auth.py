@@ -31,6 +31,7 @@ class User(Base, TimestampMixin):
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     sessions: Mapped[list["AuthSession"]] = relationship(
@@ -39,6 +40,10 @@ class User(Base, TimestampMixin):
     memberships: Mapped[list["CompanyMember"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", foreign_keys="CompanyMember.user_id"
     )
+
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
 
 
 class Company(Base, TimestampMixin):
@@ -134,6 +139,25 @@ class AuthSession(Base):
     @property
     def is_active(self) -> bool:
         return self.revoked_at is None and self.expires_at > utc_now()
+
+
+class AuthEmailToken(Base):
+    __tablename__ = "auth_email_tokens"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    company_member_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("company_members.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    email_normalized: Mapped[str] = mapped_column(String(320), index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    purpose: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
 class AuthAuditEvent(Base):

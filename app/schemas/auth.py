@@ -12,6 +12,7 @@ class UserPublic(BaseModel):
     first_name: str
     last_name: str
     is_active: bool
+    email_verified: bool
     created_at: datetime
 
 
@@ -48,6 +49,30 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=256)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+
+
+class AcceptInvitationRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    password: str = Field(min_length=12, max_length=256)
+    confirm_password: str = Field(min_length=12, max_length=256)
+    first_name: str = Field(default="", max_length=100)
+    last_name: str = Field(default="", max_length=100)
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def strip_names(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_passwords(self) -> "AcceptInvitationRequest":
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        validate_password_strength(self.password)
+        return self
 
 
 class RefreshRequest(BaseModel):

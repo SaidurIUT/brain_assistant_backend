@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.auth import User
 from app.schemas.auth import (
+    AcceptInvitationRequest,
     ChangePasswordRequest,
     LoginRequest,
     LogoutRequest,
@@ -13,8 +14,10 @@ from app.schemas.auth import (
     RegisterRequest,
     TokenResponse,
     UserPublic,
+    VerifyEmailRequest,
 )
 from app.services.auth import (
+    accept_invitation,
     change_password,
     clear_refresh_cookie,
     login_user,
@@ -23,6 +26,7 @@ from app.services.auth import (
     refresh_auth_session,
     register_user,
     set_refresh_cookie,
+    verify_email_token,
 )
 from app.api.deps import get_current_user
 
@@ -37,6 +41,38 @@ def register(
     db: Session = Depends(get_db),
 ) -> TokenResponse:
     result = register_user(db, payload, request)
+    set_refresh_cookie(response, result.refresh_token)
+    return TokenResponse(
+        access_token=result.access_token,
+        expires_in=result.expires_in,
+        user=UserPublic.model_validate(result.user),
+    )
+
+
+@router.post("/verify-email", response_model=TokenResponse)
+def verify_email(
+    payload: VerifyEmailRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    result = verify_email_token(db, raw_token=payload.token, request=request)
+    set_refresh_cookie(response, result.refresh_token)
+    return TokenResponse(
+        access_token=result.access_token,
+        expires_in=result.expires_in,
+        user=UserPublic.model_validate(result.user),
+    )
+
+
+@router.post("/accept-invitation", response_model=TokenResponse)
+def accept_workspace_invitation(
+    payload: AcceptInvitationRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    result = accept_invitation(db, payload=payload, request=request)
     set_refresh_cookie(response, result.refresh_token)
     return TokenResponse(
         access_token=result.access_token,

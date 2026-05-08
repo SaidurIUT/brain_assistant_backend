@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "Brain Assistant Auth API"
     environment: str = "development"
     api_v1_prefix: str = "/api/v1"
+    frontend_base_url: str = Field(default="http://localhost:3010", alias="FRONTEND_BASE_URL")
 
     database_url: str = Field(alias="DATABASE_URL")
     secret_key: str = Field(alias="SECRET_KEY", min_length=32)
@@ -23,6 +24,17 @@ class Settings(BaseSettings):
     login_lockout_after_failures: int = 8
     login_lockout_minutes: int = 15
 
+    mail_mode: str = Field(default="dev", alias="MAIL_MODE")
+    mail_from: str = Field(default="Brain Assistant <no-reply@brainassistant.local>", alias="MAIL_FROM")
+    smtp_host: str = Field(default="localhost", alias="SMTP_HOST")
+    smtp_port: int = Field(default=1125, alias="SMTP_PORT")
+    smtp_username: str = Field(default="", alias="SMTP_USERNAME")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_use_tls: bool = Field(default=False, alias="SMTP_USE_TLS")
+    smtp_starttls: bool = Field(default=False, alias="SMTP_STARTTLS")
+    email_verification_expire_hours: int = Field(default=24, alias="EMAIL_VERIFICATION_EXPIRE_HOURS")
+    invitation_expire_days: int = Field(default=7, alias="INVITATION_EXPIRE_DAYS")
+
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         if self.environment.lower() in {"production", "prod"}:
@@ -31,6 +43,13 @@ class Settings(BaseSettings):
                 raise ValueError("SECRET_KEY must be a strong random value in production")
             if not self.auth_cookie_secure:
                 raise ValueError("AUTH_COOKIE_SECURE must be true in production")
+        if self.mail_mode.lower() in {"production", "prod"}:
+            if not self.smtp_host:
+                raise ValueError("SMTP_HOST is required in production mail mode")
+            if not self.smtp_username or not self.smtp_password:
+                raise ValueError("SMTP_USERNAME and SMTP_PASSWORD are required in production mail mode")
+            if "brainassistant.local" in self.mail_from:
+                raise ValueError("MAIL_FROM must be a real sender address in production mail mode")
         return self
 
     @property
