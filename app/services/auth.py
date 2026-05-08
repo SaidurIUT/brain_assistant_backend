@@ -17,8 +17,9 @@ from app.core.security import (
     password_needs_rehash,
     verify_password,
 )
-from app.models.auth import AuthAuditEvent, AuthSession, User
-from app.schemas.auth import RegisterRequest
+from app.models.auth import AuthAuditEvent, AuthEmailToken, AuthSession, CompanyMember, User
+from app.schemas.auth import AcceptInvitationRequest, RegisterRequest
+from app.services.email import frontend_url, send_email
 from app.services.settings import create_default_workspace
 
 
@@ -110,6 +111,93 @@ def create_user(db: Session, payload: RegisterRequest, request: Request) -> User
     return user
 
 
+def create_email_token(
+    db: Session,
+    *,
+    email: str,
+    purpose: str,
+    user_id: UUID | None = None,
+    company_member_id: UUID | None = None,
+) -> str:
+    token = token_urlsafe(48)
+    expiry = (
+        utc_now() + timedelta(days=settings.invitation_expire_days)
+        if purpose == "invitation"
+        else utc_now() + timedelta(hours=settings.email_verification_expire_hours)
+    )
+    db.add(
+        AuthEmailToken(
+            user_id=user_id,
+            company_member_id=company_member_id,
+            email=email,
+            email_normalized=normalize_email(email),
+            token_hash=hash_refresh_token(token),
+            purpose=purpose,
+            expires_at=expiry,
+        )
+    )
+    return token
+
+
+def send_verification_email(user: User, token: str) -> None:
+    link = frontend_url("/verify-email", token=token)
+    send_email(
+        to_email=user.email,
+        subject="Verify your Brain Assistant email",
+        text_body=(
+            f"Hi {user.first_name},\n\n"
+            "Verify your Brain Assistant account by opening this link:\n"
+            f"{link}\n\n"
+            f"This link expires in {settings.email_verification_expire_hours} hours."
+        ),
+    )
+
+
+def send_invitation_email(member: CompanyMember, token: str) -> None:
+    link = frontend_url("/invite/accept", token=token)
+    inviter = "An administrator"
+    company_name = member.company.name
+    send_email(
+        to_email=member.email,
+        subject=f"You were invited to {company_name} on Brain Assistant",
+        text_body=(
+            f"Hi {member.first_name or member.email},\n\n"
+            f"{inviter} invited you to {company_name} on Brain Assistant.\n"
+            "Set your password and accept the invite here:\n"
+            f"{link}\n\n"
+            f"This invitation expires in {settings.invitation_expire_days} days."
+        ),
+    )
+
+
+def register_user(db: Session, payload: RegisterRequest, request: Request) -> AuthResult:
+    email_normalized = normalize_email(str(payload.email))
+    user = db.scalar(select(User).where(User.email_normalized == email_normalized))
+
+    if user is None:
+        user = create_user(db, payload, request)
+        create_default_workspace(db, user)
+    elif not verify_password(payload.password, user.password_hash):
+        audit_event(db, event_type="login_failed", request=request, user_id=user.id, metadata={"reason": "registration_existing_email"})
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Use the password for this account to continue.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if user.email_verified_at is None:
+        token = create_email_token(db, email=user.email, purpose="verification", user_id=user.id)
+        send_verification_email(user, token)
+        audit_event(db, event_type="verification_email_sent", request=request, user_id=user.id)
+
+    result = create_auth_result(db, user, request)
+    audit_event(db, event_type="login_success", request=request, user_id=user.id, metadata={"reason": "registration"})
+    db.commit()
+    db.refresh(user)
+    return result
+
+
 def create_auth_result(db: Session, user: User, request: Request) -> AuthResult:
     refresh_token = token_urlsafe(64)
     refresh_family = uuid4()
@@ -133,16 +221,6 @@ def create_auth_result(db: Session, user: User, request: Request) -> AuthResult:
         expires_in=settings.access_token_expire_minutes * 60,
         user=user,
     )
-
-
-def register_user(db: Session, payload: RegisterRequest, request: Request) -> AuthResult:
-    user = create_user(db, payload, request)
-    create_default_workspace(db, user)
-    result = create_auth_result(db, user, request)
-    audit_event(db, event_type="login_success", request=request, user_id=user.id, metadata={"reason": "registration"})
-    db.commit()
-    db.refresh(user)
-    return result
 
 
 def login_user(db: Session, *, email: str, password: str, request: Request) -> AuthResult:
@@ -187,6 +265,88 @@ def login_user(db: Session, *, email: str, password: str, request: Request) -> A
     db.commit()
     db.refresh(user)
     return result
+
+
+def token_record(db: Session, *, raw_token: str, purpose: str) -> AuthEmailToken:
+    record = db.scalar(
+        select(AuthEmailToken).where(
+            AuthEmailToken.token_hash == hash_refresh_token(raw_token),
+            AuthEmailToken.purpose == purpose,
+        )
+    )
+    if record is None or record.consumed_at is not None or record.expires_at <= utc_now():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token")
+    return record
+
+
+def verify_email_token(db: Session, *, raw_token: str, request: Request) -> AuthResult:
+    record = token_record(db, raw_token=raw_token, purpose="verification")
+    user = db.get(User, record.user_id) if record.user_id else None
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification token")
+
+    user.email_verified_at = user.email_verified_at or utc_now()
+    record.consumed_at = utc_now()
+    audit_event(db, event_type="email_verified", request=request, user_id=user.id)
+    result = create_auth_result(db, user, request)
+    audit_event(db, event_type="login_success", request=request, user_id=user.id, metadata={"reason": "email_verified"})
+    db.commit()
+    db.refresh(user)
+    return result
+
+
+def accept_invitation(db: Session, *, payload: AcceptInvitationRequest, request: Request) -> AuthResult:
+    record = token_record(db, raw_token=payload.token, purpose="invitation")
+    member = db.get(CompanyMember, record.company_member_id) if record.company_member_id else None
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invitation token")
+
+    user = member.user or db.scalar(select(User).where(User.email_normalized == member.email_normalized))
+    if user is None:
+        now = utc_now()
+        user = User(
+            email=member.email,
+            email_normalized=member.email_normalized,
+            first_name=payload.first_name or member.first_name or "New",
+            last_name=payload.last_name or member.last_name or "Member",
+            password_hash=hash_password(payload.password),
+            email_verified_at=now,
+            password_changed_at=now,
+        )
+        db.add(user)
+        db.flush()
+        audit_event(db, event_type="user_created_from_invitation", request=request, user_id=user.id)
+    else:
+        user.email_verified_at = user.email_verified_at or utc_now()
+
+    member.user_id = user.id
+    member.first_name = member.first_name or user.first_name
+    member.last_name = member.last_name or user.last_name
+    member.status = "active"
+    record.consumed_at = utc_now()
+    audit_event(
+        db,
+        event_type="invitation_accepted",
+        request=request,
+        user_id=user.id,
+        metadata={"company_id": str(member.company_id), "member_id": str(member.id)},
+    )
+    result = create_auth_result(db, user, request)
+    audit_event(db, event_type="login_success", request=request, user_id=user.id, metadata={"reason": "invitation"})
+    db.commit()
+    db.refresh(user)
+    return result
+
+
+def create_invitation_for_member(db: Session, member: CompanyMember) -> None:
+    token = create_email_token(
+        db,
+        email=member.email,
+        purpose="invitation",
+        user_id=member.user_id,
+        company_member_id=member.id,
+    )
+    send_invitation_email(member, token)
 
 
 def refresh_auth_session(db: Session, *, refresh_token: str, request: Request) -> AuthResult:

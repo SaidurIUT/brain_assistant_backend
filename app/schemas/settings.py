@@ -72,6 +72,13 @@ class MemberPublic(BaseModel):
     created_at: datetime
 
 
+class WorkspaceSummaryPublic(BaseModel):
+    id: UUID
+    name: str
+    role: Role
+    status: str
+
+
 class MemberCreateRequest(BaseModel):
     email: EmailStr
     first_name: str = Field(default="", max_length=100)
@@ -93,4 +100,5 @@ class SettingsPublic(BaseModel):
     company: CompanyPublic
     brand: BrandPublic
     members: list[MemberPublic]
-
+    workspaces: list[WorkspaceSummaryPublic]
+    current_role: Role
