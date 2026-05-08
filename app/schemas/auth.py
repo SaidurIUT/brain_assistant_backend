@@ -30,8 +30,8 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
-    password: str = Field(min_length=12, max_length=256)
-    confirm_password: str = Field(min_length=12, max_length=256)
+    password: str = Field(min_length=8, max_length=256)
+    confirm_password: str = Field(min_length=8, max_length=256)
 
     @field_validator("first_name", "last_name")
     @classmethod
@@ -57,8 +57,8 @@ class VerifyEmailRequest(BaseModel):
 
 class AcceptInvitationRequest(BaseModel):
     token: str = Field(min_length=32, max_length=512)
-    password: str = Field(min_length=12, max_length=256)
-    confirm_password: str = Field(min_length=12, max_length=256)
+    password: str = Field(min_length=8, max_length=256)
+    confirm_password: str = Field(min_length=8, max_length=256)
     first_name: str = Field(default="", max_length=100)
     last_name: str = Field(default="", max_length=100)
 
@@ -85,8 +85,8 @@ class LogoutRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
-    new_password: str = Field(min_length=12, max_length=256)
-    confirm_password: str = Field(min_length=12, max_length=256)
+    new_password: str = Field(min_length=8, max_length=256)
+    confirm_password: str = Field(min_length=8, max_length=256)
 
     @model_validator(mode="after")
     def validate_passwords(self) -> "ChangePasswordRequest":
@@ -94,6 +94,23 @@ class ChangePasswordRequest(BaseModel):
             raise ValueError("Passwords do not match")
         if self.current_password == self.new_password:
             raise ValueError("New password must be different from the current password")
+        validate_password_strength(self.new_password)
+        return self
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    new_password: str = Field(min_length=8, max_length=256)
+    confirm_password: str = Field(min_length=8, max_length=256)
+
+    @model_validator(mode="after")
+    def validate_passwords(self) -> "ResetPasswordRequest":
+        if self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match")
         validate_password_strength(self.new_password)
         return self
 
@@ -110,13 +127,13 @@ class MessageResponse(BaseModel):
 
 
 def validate_password_strength(password: str) -> None:
-    checks = [
-        any(char.islower() for char in password),
-        any(char.isupper() for char in password),
-        any(char.isdigit() for char in password),
-        any(not char.isalnum() for char in password),
-    ]
-    if sum(checks) < 3:
-        raise ValueError(
-            "Password must include at least three of: lowercase, uppercase, number, symbol"
-        )
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    if not any(char.islower() for char in password):
+        raise ValueError("Password must include at least one lowercase letter")
+    if not any(char.isupper() for char in password):
+        raise ValueError("Password must include at least one uppercase letter")
+    if not any(char.isdigit() for char in password):
+        raise ValueError("Password must include at least one number")
+    if not any(not char.isalnum() for char in password):
+        raise ValueError("Password must include at least one symbol")
