@@ -7,6 +7,10 @@ from app.core.config import settings
 
 OPENAPI_TAGS = [
     {
+        "name": "api-config",
+        "description": "API documentation imports, endpoint cataloging, MCP metadata, and AI access controls.",
+    },
+    {
         "name": "auth",
         "description": "Account registration, login, sessions, email verification, invitations, and password recovery.",
     },
