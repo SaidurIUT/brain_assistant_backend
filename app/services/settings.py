@@ -42,18 +42,29 @@ def create_default_workspace(db: Session, user: User) -> Company:
     return company
 
 
-def current_company(db: Session, user: User) -> Company:
-    member = db.scalar(
-        select(CompanyMember)
-        .where(CompanyMember.user_id == user.id, CompanyMember.status == "active")
-        .order_by(CompanyMember.created_at.asc())
-    )
+def current_company(db: Session, user: User, company_id: UUID | None = None) -> Company:
+    query = select(CompanyMember).where(CompanyMember.user_id == user.id, CompanyMember.status == "active")
+    if company_id is not None:
+        query = query.where(CompanyMember.company_id == company_id)
+    member = db.scalar(query.order_by(CompanyMember.created_at.asc()))
     if member is None:
+        if company_id is not None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
         company = create_default_workspace(db, user)
         db.commit()
         db.refresh(company)
         return company
     return member.company
+
+
+def active_workspace_memberships(db: Session, user: User) -> list[CompanyMember]:
+    return list(
+        db.scalars(
+            select(CompanyMember)
+            .where(CompanyMember.user_id == user.id, CompanyMember.status == "active")
+            .order_by(CompanyMember.created_at.asc())
+        )
+    )
 
 
 def require_company_admin(db: Session, user: User, company: Company) -> CompanyMember:
@@ -110,7 +121,7 @@ def create_member(db: Session, company: Company, inviter: User, payload: MemberC
         first_name=payload.first_name,
         last_name=payload.last_name,
         role=payload.role,
-        status="active" if existing_user else "invited",
+        status="invited",
         invited_by_user_id=inviter.id,
     )
     db.add(member)
