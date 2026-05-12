@@ -24,6 +24,12 @@ docker compose up --build
 
 This starts the backend Postgres database, the backend-only Mailhog service, runs Alembic migrations, and serves FastAPI on http://localhost:8010.
 
+Swagger/OpenAPI documentation is available after the API starts:
+
+- Swagger UI: http://localhost:8010/docs
+- ReDoc: http://localhost:8010/redoc
+- OpenAPI JSON: http://localhost:8010/openapi.json
+
 If the database is already running because you started it separately, use:
 
 ```sh

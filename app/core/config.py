@@ -7,8 +7,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "Brain Assistant Auth API"
+    app_version: str = "0.1.0"
     environment: str = "development"
     api_v1_prefix: str = "/api/v1"
+    docs_url: str = "/docs"
+    redoc_url: str = "/redoc"
+    openapi_url: str = "/openapi.json"
     frontend_base_url: str = Field(default="http://localhost:3010", alias="FRONTEND_BASE_URL")
 
     database_url: str = Field(alias="DATABASE_URL")

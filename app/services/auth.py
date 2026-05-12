@@ -18,7 +18,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.auth import AuthAuditEvent, AuthEmailToken, AuthSession, CompanyMember, User
-from app.schemas.auth import AcceptInvitationRequest, RegisterRequest
+from app.schemas.auth import AcceptInvitationRequest, ResetPasswordRequest, RegisterRequest
 from app.services.email import frontend_url, send_email
 from app.services.settings import create_default_workspace
 
@@ -166,6 +166,20 @@ def send_invitation_email(member: CompanyMember, token: str) -> None:
             "Set your password and accept the invite here:\n"
             f"{link}\n\n"
             f"This invitation expires in {settings.invitation_expire_days} days."
+        ),
+    )
+
+
+def send_password_reset_email(user: User, token: str) -> None:
+    link = frontend_url("/reset-password", token=token)
+    send_email(
+        to_email=user.email,
+        subject="Reset your Brain Assistant password",
+        text_body=(
+            f"Hi {user.first_name},\n\n"
+            "Reset your Brain Assistant password by opening this link:\n"
+            f"{link}\n\n"
+            f"This link expires in {settings.email_verification_expire_hours} hours."
         ),
     )
 
@@ -347,6 +361,40 @@ def create_invitation_for_member(db: Session, member: CompanyMember) -> None:
         company_member_id=member.id,
     )
     send_invitation_email(member, token)
+
+
+def request_password_reset(db: Session, *, email: str, request: Request) -> None:
+    user = db.scalar(select(User).where(User.email_normalized == normalize_email(email)))
+    if user is None or not user.is_active:
+        audit_event(db, event_type="password_reset_requested", request=request, metadata={"email": normalize_email(email)})
+        db.commit()
+        return
+
+    token = create_email_token(db, email=user.email, purpose="password_reset", user_id=user.id)
+    send_password_reset_email(user, token)
+    audit_event(db, event_type="password_reset_requested", request=request, user_id=user.id)
+    db.commit()
+
+
+def reset_password(db: Session, *, payload: ResetPasswordRequest, request: Request) -> None:
+    record = token_record(db, raw_token=payload.token, purpose="password_reset")
+    user = db.get(User, record.user_id) if record.user_id else None
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid password reset token")
+
+    now = utc_now()
+    user.password_hash = hash_password(payload.new_password)
+    user.password_changed_at = now
+    user.failed_login_count = 0
+    user.locked_until = None
+    record.consumed_at = now
+    db.execute(
+        update(AuthSession)
+        .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    audit_event(db, event_type="password_reset_completed", request=request, user_id=user.id)
+    db.commit()
 
 
 def refresh_auth_session(db: Session, *, refresh_token: str, request: Request) -> AuthResult:
