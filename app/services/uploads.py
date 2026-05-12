@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -22,6 +23,7 @@ def list_uploads(db: Session, company: Company, category: str = "documents") -> 
     return list(
         db.scalars(
             select(CompanyUpload)
+            .options(selectinload(CompanyUpload.knowledge_document))
             .where(CompanyUpload.company_id == company.id, CompanyUpload.category == category)
             .order_by(CompanyUpload.created_at.desc())
         )
@@ -91,6 +93,8 @@ def get_upload_for_company(db: Session, company: Company, upload_id) -> CompanyU
 
 
 def delete_upload(db: Session, record: CompanyUpload) -> None:
+    if record.knowledge_document and record.knowledge_document.current_job:
+        db.delete(record.knowledge_document.current_job)
     Path(record.storage_path).unlink(missing_ok=True)
     db.delete(record)
 
