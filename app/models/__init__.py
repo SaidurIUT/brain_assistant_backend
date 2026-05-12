@@ -4,10 +4,12 @@ from app.models.auth import (
     ApiServer,
     AuthAuditEvent,
     AuthSession,
+    BackgroundJob,
     BrandSettings,
     Company,
     CompanyMember,
     CompanyUpload,
+    KnowledgeDocument,
     User,
 )
 
@@ -17,9 +19,11 @@ __all__ = [
     "ApiServer",
     "AuthAuditEvent",
     "AuthSession",
+    "BackgroundJob",
     "BrandSettings",
     "Company",
     "CompanyMember",
     "CompanyUpload",
+    "KnowledgeDocument",
     "User",
 ]

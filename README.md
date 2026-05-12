@@ -23,12 +23,20 @@ docker compose up --build
 ```
 
 This starts the backend Postgres database, the backend-only Mailhog service, runs Alembic migrations, and serves FastAPI on http://localhost:8010.
+It also starts Redis and one `brain-worker` Celery worker for background jobs such as Knowledge Base document text extraction.
 
 Swagger/OpenAPI documentation is available after the API starts:
 
 - Swagger UI: http://localhost:8010/docs
 - ReDoc: http://localhost:8010/redoc
 - OpenAPI JSON: http://localhost:8010/openapi.json
+
+Scale extraction workers up to the local maximum of five when processing many Knowledge Base uploads:
+
+```sh
+cd backend
+docker compose up --scale brain-worker=5
+```
 
 If the database is already running because you started it separately, use:
 
@@ -44,9 +52,16 @@ Only use this path if you want to run FastAPI directly on your machine. The acti
 ```sh
 cd backend
 python -m pip install -e ".[dev]"
-docker compose up -d brain-assistant-db brain-assistant-mailhog
+docker compose up -d brain-assistant-db brain-assistant-mailhog brain-assistant-redis
 python -m alembic upgrade head
 python -m fastapi dev app/main.py --host 0.0.0.0 --port 8010
+```
+
+Run a local worker in a second terminal if you use the direct API path:
+
+```sh
+cd backend
+REDIS_URL=redis://localhost:56379/0 python -m celery -A app.jobs.celery_app:celery_app worker --loglevel=info --concurrency=1 -Q brain-jobs
 ```
 
 ## Auth Flow
@@ -60,6 +75,12 @@ python -m fastapi dev app/main.py --host 0.0.0.0 --port 8010
 - Logout revokes the current refresh session.
 - Logout-all revokes every active session for the user.
 - Administrators invite members from settings; invited people receive an email and set their first password through `POST /api/v1/auth/accept-invitation`.
+
+## Knowledge Base Extraction
+
+Document uploads create a generic background job with `job_type=document_text_extraction`.
+Workers extract selectable text from PDF, Word, Markdown, text, and CSV files, then store the full extracted text and status in Postgres.
+Scanned PDFs are marked failed with a clear OCR-not-supported error because OCR is intentionally out of scope for this phase.
 
 ## Email Modes
 

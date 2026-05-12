@@ -78,6 +78,12 @@ class Company(Base, TimestampMixin):
     uploads: Mapped[list["CompanyUpload"]] = relationship(
         back_populates="company", cascade="all, delete-orphan"
     )
+    background_jobs: Mapped[list["BackgroundJob"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan"
+    )
+    knowledge_documents: Mapped[list["KnowledgeDocument"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan"
+    )
 
 
 class BrandSettings(Base, TimestampMixin):
@@ -224,6 +230,62 @@ class CompanyUpload(Base, TimestampMixin):
 
     company: Mapped[Company] = relationship(back_populates="uploads")
     uploaded_by: Mapped[User | None] = relationship(foreign_keys=[uploaded_by_user_id])
+    knowledge_document: Mapped["KnowledgeDocument | None"] = relationship(
+        back_populates="upload", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class BackgroundJob(Base, TimestampMixin):
+    __tablename__ = "background_jobs"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    job_type: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="queued", index=True, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    result: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    celery_task_id: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    company: Mapped[Company] = relationship(back_populates="background_jobs")
+    knowledge_documents: Mapped[list["KnowledgeDocument"]] = relationship(back_populates="current_job")
+
+
+class KnowledgeDocument(Base, TimestampMixin):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    upload_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("company_uploads.id", ondelete="CASCADE"), unique=True, nullable=True
+    )
+    current_job_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("background_jobs.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(40), default="queued", index=True, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(40), default="upload", index=True, nullable=False)
+    source_url: Mapped[str] = mapped_column(String(2000), default="", nullable=False)
+    source_title: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    extracted_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    char_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    document_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    error_message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    company: Mapped[Company] = relationship(back_populates="knowledge_documents")
+    upload: Mapped[CompanyUpload | None] = relationship(back_populates="knowledge_document")
+    current_job: Mapped[BackgroundJob | None] = relationship(back_populates="knowledge_documents")
 
 
 class AuthSession(Base):
