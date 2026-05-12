@@ -7,6 +7,7 @@ from app.models.auth import (
     BrandSettings,
     Company,
     CompanyMember,
+    CompanyUpload,
     User,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "BrandSettings",
     "Company",
     "CompanyMember",
+    "CompanyUpload",
     "User",
 ]
