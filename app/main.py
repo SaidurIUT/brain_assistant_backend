@@ -5,9 +5,45 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.core.config import settings
 
+OPENAPI_TAGS = [
+    {
+        "name": "api-config",
+        "description": "API documentation imports, endpoint cataloging, MCP metadata, and AI access controls.",
+    },
+    {
+        "name": "auth",
+        "description": "Account registration, login, sessions, email verification, invitations, and password recovery.",
+    },
+    {
+        "name": "settings",
+        "description": "Workspace, brand, user profile, member, and role management.",
+    },
+    {
+        "name": "system",
+        "description": "Operational health endpoints.",
+    },
+]
+
 
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.app_name)
+    app = FastAPI(
+        title=settings.app_name,
+        summary="Authentication and workspace settings API for Brain Assistant.",
+        description=(
+            "Brain Assistant backend API for auth, email verification, password reset, "
+            "workspace settings, brand settings, and member invitations."
+        ),
+        version=settings.app_version,
+        docs_url=settings.docs_url,
+        redoc_url=settings.redoc_url,
+        openapi_url=settings.openapi_url,
+        openapi_tags=OPENAPI_TAGS,
+        swagger_ui_parameters={
+            "displayRequestDuration": True,
+            "persistAuthorization": True,
+            "tryItOutEnabled": True,
+        },
+    )
 
     if settings.cors_origin_strings:
         app.add_middleware(
@@ -36,4 +72,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

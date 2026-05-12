@@ -25,3 +25,14 @@ def test_register_password_requires_strength() -> None:
             confirm_password="weakpassword",
         )
 
+
+def test_register_password_allows_eight_character_complex_password() -> None:
+    payload = RegisterRequest(
+        email="person@example.com",
+        first_name="Person",
+        last_name="Example",
+        password="Aa1!aaaa",
+        confirm_password="Aa1!aaaa",
+    )
+
+    assert payload.password == "Aa1!aaaa"

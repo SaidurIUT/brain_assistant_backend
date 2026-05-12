@@ -7,11 +7,13 @@ from app.models.auth import User
 from app.schemas.auth import (
     AcceptInvitationRequest,
     ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     LogoutRequest,
     MessageResponse,
     RefreshRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     TokenResponse,
     UserPublic,
     VerifyEmailRequest,
@@ -25,6 +27,8 @@ from app.services.auth import (
     logout_session,
     refresh_auth_session,
     register_user,
+    request_password_reset,
+    reset_password,
     set_refresh_cookie,
     verify_email_token,
 )
@@ -95,6 +99,28 @@ def login(
         expires_in=result.expires_in,
         user=UserPublic.model_validate(result.user),
     )
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MessageResponse:
+    request_password_reset(db, email=str(payload.email), request=request)
+    return MessageResponse(message="If that email exists, a reset link has been sent.")
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_account_password(
+    payload: ResetPasswordRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> MessageResponse:
+    reset_password(db, payload=payload, request=request)
+    clear_refresh_cookie(response)
+    return MessageResponse(message="Password reset. Please log in.")
 
 
 @router.post("/refresh", response_model=TokenResponse)
