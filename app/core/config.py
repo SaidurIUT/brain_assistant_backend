@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     smtp_starttls: bool = Field(default=False, alias="SMTP_STARTTLS")
     email_verification_expire_hours: int = Field(default=24, alias="EMAIL_VERIFICATION_EXPIRE_HOURS")
     invitation_expire_days: int = Field(default=7, alias="INVITATION_EXPIRE_DAYS")
+    upload_storage_path: str = Field(default="storage/uploads", alias="UPLOAD_STORAGE_PATH")
+    upload_max_bytes: int = Field(default=25 * 1024 * 1024, alias="UPLOAD_MAX_BYTES")
 
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
