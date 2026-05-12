@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     upload_storage_path: str = Field(default="storage/uploads", alias="UPLOAD_STORAGE_PATH")
     upload_max_bytes: int = Field(default=25 * 1024 * 1024, alias="UPLOAD_MAX_BYTES")
 
+    # Celery / Redis
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+
+    # Chatwoot AgentBot webhook — fallbacks for local dev before a chatwoot_connections row exists
+    chatwoot_webhook_secret: str = Field(default="", alias="CHATWOOT_WEBHOOK_SECRET")
+    chatwoot_base_url: str = Field(default="", alias="CHATWOOT_BASE_URL")
+    chatwoot_account_id: int = Field(default=0, alias="CHATWOOT_ACCOUNT_ID")
+    chatwoot_agent_bot_id: int = Field(default=0, alias="CHATWOOT_AGENT_BOT_ID")
+    chatwoot_agent_bot_token: str = Field(default="", alias="CHATWOOT_AGENT_BOT_TOKEN")
+
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         if self.environment.lower() in {"production", "prod"}:

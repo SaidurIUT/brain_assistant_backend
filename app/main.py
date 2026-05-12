@@ -22,6 +22,10 @@ OPENAPI_TAGS = [
         "name": "system",
         "description": "Operational health endpoints.",
     },
+    {
+        "name": "webhooks",
+        "description": "Inbound webhook receivers — Chatwoot AgentBot events.",
+    },
 ]
 
 

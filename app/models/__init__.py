@@ -10,6 +10,7 @@ from app.models.auth import (
     CompanyUpload,
     User,
 )
+from app.models.chatwoot import ChatwootConnection, ChatwootEvent
 
 __all__ = [
     "ApiDocumentationSource",
@@ -18,6 +19,8 @@ __all__ = [
     "AuthAuditEvent",
     "AuthSession",
     "BrandSettings",
+    "ChatwootConnection",
+    "ChatwootEvent",
     "Company",
     "CompanyMember",
     "CompanyUpload",
