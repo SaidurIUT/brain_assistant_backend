@@ -39,8 +39,12 @@ services:
       SMTP_STARTTLS: "false"
       EMAIL_VERIFICATION_EXPIRE_HOURS: 24
       INVITATION_EXPIRE_DAYS: 7
+      UPLOAD_STORAGE_PATH: /app/storage/uploads
+      UPLOAD_MAX_BYTES: 26214400
     ports:
       - "8010:8010"
+    volumes:
+      - ./storage/uploads:/app/storage/uploads
     depends_on:
       brain-assistant-db:
         condition: service_healthy
