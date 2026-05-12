@@ -21,6 +21,7 @@ services:
   brain-assistant-api:
     build:
       context: .
+      target: api
     container_name: brain-assistant-api
     environment:
       ENVIRONMENT: development
@@ -41,6 +42,7 @@ services:
       INVITATION_EXPIRE_DAYS: 7
       UPLOAD_STORAGE_PATH: /app/storage/uploads
       UPLOAD_MAX_BYTES: 26214400
+      REDIS_URL: redis://brain-assistant-redis:6379/0
     ports:
       - "8010:8010"
     volumes:
@@ -50,9 +52,49 @@ services:
         condition: service_healthy
       brain-assistant-mailhog:
         condition: service_started
+      brain-assistant-redis:
+        condition: service_started
     command: >
       sh -c "alembic upgrade head &&
              fastapi run app/main.py --host 0.0.0.0 --port 8010"
+
+  brain-worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      ENVIRONMENT: development
+      FRONTEND_BASE_URL: http://localhost:3010
+      DATABASE_URL: postgresql+psycopg://brain_backend:brain_backend_dev_password@brain-assistant-db:5432/brain_assistant_backend
+      SECRET_KEY: dev-only-change-before-production-64-character-secret-key-for-local-auth
+      BACKEND_CORS_ORIGINS: http://localhost:3010,http://127.0.0.1:3010
+      ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      REFRESH_TOKEN_EXPIRE_DAYS: 30
+      AUTH_COOKIE_SECURE: "false"
+      MAIL_MODE: dev
+      MAIL_FROM: Brain Assistant <no-reply@brainassistant.local>
+      SMTP_HOST: brain-assistant-mailhog
+      SMTP_PORT: 1025
+      SMTP_USE_TLS: "false"
+      SMTP_STARTTLS: "false"
+      EMAIL_VERIFICATION_EXPIRE_HOURS: 24
+      INVITATION_EXPIRE_DAYS: 7
+      UPLOAD_STORAGE_PATH: /app/storage/uploads
+      UPLOAD_MAX_BYTES: 26214400
+      REDIS_URL: redis://brain-assistant-redis:6379/0
+    volumes:
+      - ./storage/uploads:/app/storage/uploads:ro
+    depends_on:
+      brain-assistant-db:
+        condition: service_healthy
+      brain-assistant-redis:
+        condition: service_started
+    command: >
+      celery -A app.jobs.celery_app:celery_app worker
+      --loglevel=info
+      --concurrency=1
+      --prefetch-multiplier=1
+      -Q brain-jobs
 
   brain-assistant-mailhog:
     image: mailhog/mailhog:v1.0.1
@@ -60,6 +102,12 @@ services:
     ports:
       - "1125:1025"
       - "8125:8025"
+
+  brain-assistant-redis:
+    image: redis:7-alpine
+    container_name: brain-assistant-redis
+    ports:
+      - "56379:6379"
 
 volumes:
   brain_assistant_backend_pg_data:
