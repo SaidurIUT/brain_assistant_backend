@@ -1,6 +1,7 @@
 import json
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 import yaml
@@ -118,9 +119,9 @@ def import_api_documentation(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provide a documentation URL or upload an API documentation file",
         )
-    detected_base_url = base_url_for_document(document)
-    source_base_url = payload.base_url or server.base_url or detected_base_url
-    if payload.base_url or (source_base_url and not server.base_url):
+    detected_base_url = base_url_for_document(document) or base_url_for_source_url(payload.source_url)
+    source_base_url = payload.base_url or detected_base_url or server.base_url
+    if payload.base_url or detected_base_url:
         server.base_url = source_base_url
     source = ApiDocumentationSource(
         company_id=company.id,
@@ -271,6 +272,13 @@ def base_url_for_document(document: dict[str, Any]) -> str:
         scheme = schemes[0] if schemes else "https"
         base_path = document.get("basePath") or ""
         return f"{scheme}://{host}{base_path}"
+    return ""
+
+
+def base_url_for_source_url(source_url: str) -> str:
+    parsed = urlparse(source_url)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
     return ""
 
 
