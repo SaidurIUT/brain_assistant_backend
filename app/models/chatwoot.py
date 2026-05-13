@@ -81,6 +81,7 @@ class ChatwootEvent(Base):
     # failed → error; row stays for retry/debugging
     status: Mapped[str] = mapped_column(String(50), default="received", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply_content: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

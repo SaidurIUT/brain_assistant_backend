@@ -32,3 +32,6 @@ dist/
 
 # Runtime logs
 *.log
+
+# LightRAG local runtime storage (graph, chunks, vectors cache)
+lightrag_storage/

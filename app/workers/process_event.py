@@ -11,7 +11,7 @@ from app.workers.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
-_HARDCODED_REPLY = "Thanks for your message. I will help you shortly."
+_FALLBACK_REPLY = "Thanks for your message. I will get back to you shortly."
 
 
 @celery.task(bind=True, max_retries=3, default_retry_delay=30)
@@ -57,14 +57,21 @@ def process_chatwoot_event(self, event_id: str) -> None:
 
         try:
             from app.services.chatwoot_client import send_message
+            from app.services.rag_service import sync_query
+
+            reply = sync_query(event.content or "")
+            if not reply.strip():
+                reply = _FALLBACK_REPLY
+
             send_message(
                 base_url=connection["base_url"],
                 account_id=connection["account_id"],
                 conversation_display_id=event.conversation_display_id,
-                content=_HARDCODED_REPLY,
+                content=reply,
                 agent_bot_token=connection["agent_bot_token"],
                 agent_bot_id=connection["agent_bot_id"],
             )
+            event.reply_content = reply
             event.status = "processed"
             event.processed_at = utc_now()
             logger.info("process_chatwoot_event: event %s replied and processed", event_id)
