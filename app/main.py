@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
+from app.api.v1.webhooks import router as webhooks_router
 from app.core.config import settings
 
 OPENAPI_TAGS = [
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"status": "ok", "service": settings.app_name})
 
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+    app.include_router(webhooks_router)
     return app
 
 
