@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.datetime import utc_now
-from app.models.auth import BackgroundJob, KnowledgeDocument
+from app.models import BackgroundJob, KnowledgeDocument
 from app.services.document_extraction import DocumentExtractionError, extract_document_text
 from app.services.jobs import (
     DOCUMENT_TEXT_EXTRACTION,
