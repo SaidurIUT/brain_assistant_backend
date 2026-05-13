@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     # Celery / Redis
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
 
+    # LightRAG / Ollama (in-process LightRAG)
+    ollama_base_url: str = Field(default="http://10.112.30.10:11434", alias="OLLAMA_BASE_URL")
+    embed_model: str = Field(default="nomic-embed-text:latest", alias="EMBED_MODEL")
+    # Capable model for entity extraction during ingestion (slow, infrequent)
+    ingest_llm_model: str = Field(default="qwen3.5:9b", alias="INGEST_LLM_MODEL")
+    # Tiny fast model for answer generation during queries (~5s response)
+    query_llm_model: str = Field(default="qwen3.5:0.8b", alias="QUERY_LLM_MODEL")
+    lightrag_working_dir: str = Field(default="./lightrag_storage", alias="LIGHTRAG_WORKING_DIR")
+
     # Chatwoot AgentBot webhook — fallbacks for local dev before a chatwoot_connections row exists
     chatwoot_webhook_secret: str = Field(default="", alias="CHATWOOT_WEBHOOK_SECRET")
     chatwoot_base_url: str = Field(default="", alias="CHATWOOT_BASE_URL")
