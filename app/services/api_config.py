@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.auth import ApiDocumentationSource, ApiEndpoint, ApiServer, Company
+from app.models import ApiDocumentationSource, ApiEndpoint, ApiServer, Company
 from app.schemas.api_config import (
     ApiDocumentationImportRequest,
     ApiEndpointCreateRequest,

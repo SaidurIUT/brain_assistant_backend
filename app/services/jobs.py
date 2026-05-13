@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.datetime import utc_now
-from app.models.auth import BackgroundJob, Company, CompanyUpload, KnowledgeDocument
+from app.models import BackgroundJob, Company, CompanyUpload, KnowledgeDocument
 
 DOCUMENT_TEXT_EXTRACTION = "document_text_extraction"
 SINGLE_PAGE_WEB_SCRAPE = "single_page_web_scrape"
