@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Body, Depends, Header, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -12,11 +12,8 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
 @router.post("/chatwoot/agent-bot")
-def agent_bot_webhook(
-    raw_body: bytes = Body(...),
-    x_chatwoot_delivery: str = Header(default=""),
-    x_chatwoot_timestamp: str = Header(default=""),
-    x_chatwoot_signature: str = Header(default=""),
+async def agent_bot_webhook(
+    request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
     """
@@ -29,12 +26,14 @@ def agent_bot_webhook(
     All AI processing is deferred to the Celery worker — this endpoint only
     stores the event and returns 200.
     """
+    raw_body = await request.body()
+
     result = ingest(
         db=db,
-        delivery_id=x_chatwoot_delivery,
+        delivery_id=request.headers.get("x-chatwoot-delivery", ""),
         raw_body=raw_body,
-        timestamp=x_chatwoot_timestamp,
-        signature=x_chatwoot_signature,
+        timestamp=request.headers.get("x-chatwoot-timestamp", ""),
+        signature=request.headers.get("x-chatwoot-signature", ""),
     )
 
     if result == IngestResult.INVALID_SIGNATURE:
