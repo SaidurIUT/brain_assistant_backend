@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.auth import BrandSettings, Company, CompanyMember, User
+from app.models import BrandSettings, Company, CompanyMember, User
 from app.schemas.settings import BrandUpdateRequest, CompanyUpdateRequest, MemberCreateRequest
 
 ADMIN_ROLES = {"administrator", "manager"}

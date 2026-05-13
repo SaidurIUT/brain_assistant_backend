@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.auth import User
+from app.models import User
 from app.schemas.auth import MessageResponse, UserPublic, UserUpdateRequest
 from app.schemas.settings import (
     BrandPublic,

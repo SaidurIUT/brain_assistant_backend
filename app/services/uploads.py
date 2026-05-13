@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.auth import Company, CompanyUpload, User
+from app.models import Company, CompanyUpload, User
 
 DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".md", ".txt", ".csv"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}
