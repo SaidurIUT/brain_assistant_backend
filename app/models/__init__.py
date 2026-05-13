@@ -1,23 +1,16 @@
-from app.models.auth import (
-    ApiDocumentationSource,
-    ApiEndpoint,
-    ApiServer,
-    AuthAuditEvent,
-    AuthSession,
-    BackgroundJob,
-    BrandSettings,
-    Company,
-    CompanyMember,
-    CompanyUpload,
-    KnowledgeDocument,
-    User,
-)
+from app.models.api_config import ApiDocumentationSource, ApiEndpoint, ApiServer
+from app.models.auth import AuthAuditEvent, AuthEmailToken, AuthSession, User
+from app.models.company import BrandSettings, Company, CompanyMember
+from app.models.jobs import BackgroundJob
+from app.models.knowledge import KnowledgeDocument
+from app.models.uploads import CompanyUpload
 
 __all__ = [
     "ApiDocumentationSource",
     "ApiEndpoint",
     "ApiServer",
     "AuthAuditEvent",
+    "AuthEmailToken",
     "AuthSession",
     "BackgroundJob",
     "BrandSettings",
