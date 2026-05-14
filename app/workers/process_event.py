@@ -1,4 +1,5 @@
 import logging
+import re
 from uuid import UUID
 
 from sqlalchemy import select
@@ -12,6 +13,33 @@ from app.workers.celery_app import celery
 logger = logging.getLogger(__name__)
 
 _FALLBACK_REPLY = "Thanks for your message. I will get back to you shortly."
+
+
+def _clean_reply(reply: str) -> str:
+    """
+    LightRAG answers come back with markdown sections like '### Answer' and
+    '### References'. For a chat widget we want just the answer text — strip
+    the references block and any leftover ### headers.
+    """
+    if not reply or not reply.strip():
+        return reply
+
+    # Prefer the explicit Answer section if the LLM produced one
+    for header in ("Answer", "Content & Grounding"):
+        match = re.search(
+            rf"^###\s*{re.escape(header)}\s*\n+(.+?)(?=^###\s+|\Z)",
+            reply, flags=re.DOTALL | re.IGNORECASE | re.MULTILINE,
+        )
+        if match:
+            return match.group(1).strip()
+
+    # Otherwise drop the References block and any standalone ### headers
+    cleaned = re.sub(
+        r"^###\s*References\s*\n.*?(?=^###\s+|\Z)",
+        "", reply, flags=re.DOTALL | re.IGNORECASE | re.MULTILINE,
+    )
+    cleaned = re.sub(r"^###\s+.*$\n*", "", cleaned, flags=re.MULTILINE)
+    return cleaned.strip()
 
 
 @celery.task(bind=True, max_retries=3, default_retry_delay=30)
@@ -56,21 +84,40 @@ def process_chatwoot_event(self, event_id: str) -> None:
             return
 
         try:
-            from app.services.chatwoot_client import send_message
+            from app.services.chatwoot_client import send_message, send_typing_status
             from app.services.rag_service import sync_query
 
-            reply = sync_query(event.content or "")
-            if not reply.strip():
-                reply = _FALLBACK_REPLY
-
-            send_message(
+            send_typing_status(
                 base_url=connection["base_url"],
                 account_id=connection["account_id"],
                 conversation_display_id=event.conversation_display_id,
-                content=reply,
                 agent_bot_token=connection["agent_bot_token"],
-                agent_bot_id=connection["agent_bot_id"],
+                typing_on=True,
             )
+
+            try:
+                raw_reply = sync_query(event.content or "")
+                reply = _clean_reply(raw_reply)
+                if not reply.strip():
+                    reply = _FALLBACK_REPLY
+
+                send_message(
+                    base_url=connection["base_url"],
+                    account_id=connection["account_id"],
+                    conversation_display_id=event.conversation_display_id,
+                    content=reply,
+                    agent_bot_token=connection["agent_bot_token"],
+                    agent_bot_id=connection["agent_bot_id"],
+                )
+            finally:
+                send_typing_status(
+                    base_url=connection["base_url"],
+                    account_id=connection["account_id"],
+                    conversation_display_id=event.conversation_display_id,
+                    agent_bot_token=connection["agent_bot_token"],
+                    typing_on=False,
+                )
+
             event.reply_content = reply
             event.status = "processed"
             event.processed_at = utc_now()
