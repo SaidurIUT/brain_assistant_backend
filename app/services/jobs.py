@@ -3,10 +3,11 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.datetime import utc_now
-from app.models import BackgroundJob, Company, CompanyUpload, KnowledgeDocument
+from app.models import BackgroundJob, Company, CompanyUpload, KnowledgeDocument, WebsiteCrawlJob
 
 DOCUMENT_TEXT_EXTRACTION = "document_text_extraction"
 SINGLE_PAGE_WEB_SCRAPE = "single_page_web_scrape"
+WEBSITE_CRAWL_DISCOVERY = "website_crawl_discovery"
 JOB_QUEUED = "queued"
 JOB_PROCESSING = "processing"
 JOB_COMPLETED = "completed"
@@ -91,6 +92,28 @@ def create_single_page_web_scrape_job(
     knowledge_document.current_job_id = background_job.id
     db.flush()
     return knowledge_document, background_job
+
+
+def create_website_crawl_discovery_job(
+    db: Session,
+    *,
+    crawl_job: WebsiteCrawlJob,
+    priority: int = 0,
+) -> BackgroundJob:
+    now = utc_now()
+    background_job = BackgroundJob(
+        company_id=crawl_job.company_id,
+        job_type=WEBSITE_CRAWL_DISCOVERY,
+        status=JOB_QUEUED,
+        priority=priority,
+        payload={"crawl_job_id": str(crawl_job.id)},
+        queued_at=now,
+    )
+    db.add(background_job)
+    db.flush()
+    crawl_job.current_job_id = background_job.id
+    db.flush()
+    return background_job
 
 
 def enqueue_background_job(job_id: UUID):
