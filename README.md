@@ -31,6 +31,28 @@ Swagger/OpenAPI documentation is available after the API starts:
 - ReDoc: http://localhost:8010/redoc
 - OpenAPI JSON: http://localhost:8010/openapi.json
 
+## Keycloak Auth Mode
+
+The backend defaults to local email/password auth. To use Keycloak for onboarding and dashboard auth, set matching backend and frontend environment variables:
+
+```text
+AUTH_PROVIDER=keycloak
+KEYCLOAK_BASE_URL=http://localhost:8080
+KEYCLOAK_REALM=brain-assistant
+KEYCLOAK_CLIENT_ID=brain-assistant-onboarding
+```
+
+In `onboarding-web/.env`, set:
+
+```text
+NEXT_PUBLIC_AUTH_PROVIDER=keycloak
+NEXT_PUBLIC_KEYCLOAK_BASE_URL=http://localhost:8080
+NEXT_PUBLIC_KEYCLOAK_REALM=brain-assistant
+NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=brain-assistant-onboarding
+```
+
+Configure the Keycloak client as a public OIDC client with standard authorization code flow, PKCE, web origin `http://localhost:3010`, and redirect URI `http://localhost:3010/auth/keycloak/callback`.
+
 Scale extraction workers up to the local maximum of five when processing many Knowledge Base uploads:
 
 ```sh
