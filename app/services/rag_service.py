@@ -52,7 +52,11 @@ def _configure_pg_env() -> None:
 async def _embed(texts: list[str]) -> np.ndarray:
     """Raw Ollama embedding — bypasses lightrag's ollama_embed which hardcodes dim=1024."""
     client = ollama_client.AsyncClient(host=settings.ollama_base_url)
-    response = await client.embed(model=settings.embed_model, input=texts)
+    response = await client.embed(
+        model=settings.embed_model,
+        input=texts,
+        keep_alive="30m",  # keep embed model in VRAM between queries
+    )
     return np.array(response.embeddings)
 
 
@@ -70,6 +74,7 @@ def _make_rag(llm_model: str) -> LightRAG:
         llm_model_kwargs={
             "host": settings.ollama_base_url,
             "options": {"num_ctx": 4096},
+            "keep_alive": "30m",  # keep model in VRAM so we don't pay cold-load on every query
         },
         embedding_func=EmbeddingFunc(
             embedding_dim=_EMBED_DIM,
