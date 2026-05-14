@@ -1,8 +1,8 @@
 """add reply_content to chatwoot_events
 
-Revision ID: 202605130003
-Revises: 202605130002
-Create Date: 2026-05-13 00:03:00.000000
+Revision ID: 202605140003
+Revises: 202605140002
+Create Date: 2026-05-14 00:03:00.000000
 """
 
 from collections.abc import Sequence
@@ -10,8 +10,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "202605130003"
-down_revision: str | None = "202605130002"
+revision: str = "202605140003"
+down_revision: str | None = "202605140002"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
