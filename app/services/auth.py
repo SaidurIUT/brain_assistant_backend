@@ -154,18 +154,32 @@ def send_verification_email(user: User, token: str) -> None:
 
 
 def send_invitation_email(member: CompanyMember, token: str) -> None:
-    link = frontend_url("/invite/accept", token=token)
+    link = (
+        frontend_url("/login", next="/dashboard/overview")
+        if settings.auth_provider == "keycloak"
+        else frontend_url("/invite/accept", token=token)
+    )
     inviter = "An administrator"
     company_name = member.company.name
+    action = (
+        "Sign in with your organization account here:"
+        if settings.auth_provider == "keycloak"
+        else "Set your password and accept the invite here:"
+    )
+    footer = (
+        "Your workspace access is matched by email."
+        if settings.auth_provider == "keycloak"
+        else f"This invitation expires in {settings.invitation_expire_days} days."
+    )
     send_email(
         to_email=member.email,
         subject=f"You were invited to {company_name} on Brain Assistant",
         text_body=(
             f"Hi {member.first_name or member.email},\n\n"
             f"{inviter} invited you to {company_name} on Brain Assistant.\n"
-            "Set your password and accept the invite here:\n"
+            f"{action}\n"
             f"{link}\n\n"
-            f"This invitation expires in {settings.invitation_expire_days} days."
+            f"{footer}"
         ),
     )
 
