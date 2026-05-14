@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
 
+    auth_provider: str = Field(default="local", alias="AUTH_PROVIDER")
+    keycloak_base_url: str = Field(default="", alias="KEYCLOAK_BASE_URL")
+    keycloak_realm: str = Field(default="", alias="KEYCLOAK_REALM")
+    keycloak_client_id: str = Field(default="", alias="KEYCLOAK_CLIENT_ID")
+    keycloak_jwks_url: str = Field(default="", alias="KEYCLOAK_JWKS_URL")
+
     backend_cors_origins: str = Field(default="", alias="BACKEND_CORS_ORIGINS")
     auth_cookie_name: str = "brain_assistant_refresh_token"
     auth_cookie_secure: bool = Field(default=True, alias="AUTH_COOKIE_SECURE")
@@ -64,6 +70,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
+        if self.auth_provider not in {"local", "keycloak"}:
+            raise ValueError("AUTH_PROVIDER must be either local or keycloak")
+        if self.auth_provider == "keycloak":
+            if not self.keycloak_issuer:
+                raise ValueError("KEYCLOAK_BASE_URL and KEYCLOAK_REALM are required when AUTH_PROVIDER=keycloak")
+            if not self.keycloak_client_id:
+                raise ValueError("KEYCLOAK_CLIENT_ID is required when AUTH_PROVIDER=keycloak")
         if self.environment.lower() in {"production", "prod"}:
             weak_markers = {"change-me", "replace-this", "dev-only"}
             if any(marker in self.secret_key.lower() for marker in weak_markers):
@@ -82,6 +95,16 @@ class Settings(BaseSettings):
     @property
     def cors_origin_strings(self) -> list[str]:
         return [origin.strip().rstrip("/") for origin in self.backend_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def keycloak_issuer(self) -> str:
+        if not self.keycloak_base_url or not self.keycloak_realm:
+            return ""
+        return f"{self.keycloak_base_url.rstrip('/')}/realms/{self.keycloak_realm}"
+
+    @property
+    def keycloak_effective_jwks_url(self) -> str:
+        return self.keycloak_jwks_url or f"{self.keycloak_issuer}/protocol/openid-connect/certs"
 
 
 @lru_cache

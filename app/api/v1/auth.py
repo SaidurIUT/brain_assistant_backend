@@ -37,6 +37,23 @@ from app.api.deps import get_current_user
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def require_local_auth() -> None:
+    if settings.auth_provider == "keycloak":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Password authentication is managed by Keycloak for this deployment.",
+        )
+
+
+@router.get("/provider")
+def auth_provider() -> dict[str, str]:
+    return {
+        "provider": settings.auth_provider,
+        "keycloak_issuer": settings.keycloak_issuer if settings.auth_provider == "keycloak" else "",
+        "keycloak_client_id": settings.keycloak_client_id if settings.auth_provider == "keycloak" else "",
+    }
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(
     payload: RegisterRequest,
@@ -44,6 +61,7 @@ def register(
     response: Response,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
+    require_local_auth()
     result = register_user(db, payload, request)
     set_refresh_cookie(response, result.refresh_token)
     return TokenResponse(
@@ -60,6 +78,7 @@ def verify_email(
     response: Response,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
+    require_local_auth()
     result = verify_email_token(db, raw_token=payload.token, request=request)
     set_refresh_cookie(response, result.refresh_token)
     return TokenResponse(
@@ -76,6 +95,7 @@ def accept_workspace_invitation(
     response: Response,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
+    require_local_auth()
     result = accept_invitation(db, payload=payload, request=request)
     set_refresh_cookie(response, result.refresh_token)
     return TokenResponse(
@@ -92,6 +112,7 @@ def login(
     response: Response,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
+    require_local_auth()
     result = login_user(db, email=str(payload.email), password=payload.password, request=request)
     set_refresh_cookie(response, result.refresh_token)
     return TokenResponse(
@@ -107,6 +128,7 @@ def forgot_password(
     request: Request,
     db: Session = Depends(get_db),
 ) -> MessageResponse:
+    require_local_auth()
     request_password_reset(db, email=str(payload.email), request=request)
     return MessageResponse(message="If that email exists, a reset link has been sent.")
 
@@ -118,6 +140,7 @@ def reset_account_password(
     response: Response,
     db: Session = Depends(get_db),
 ) -> MessageResponse:
+    require_local_auth()
     reset_password(db, payload=payload, request=request)
     clear_refresh_cookie(response)
     return MessageResponse(message="Password reset. Please log in.")
@@ -131,6 +154,7 @@ def refresh(
     refresh_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
     db: Session = Depends(get_db),
 ) -> TokenResponse:
+    require_local_auth()
     refresh_token = payload.refresh_token if payload else None
     refresh_token = refresh_token or refresh_cookie
     if not refresh_token:
@@ -156,6 +180,7 @@ def logout(
     refresh_cookie: str | None = Cookie(default=None, alias=settings.auth_cookie_name),
     db: Session = Depends(get_db),
 ) -> MessageResponse:
+    require_local_auth()
     refresh_token = payload.refresh_token if payload else None
     refresh_token = refresh_token or refresh_cookie
     if refresh_token:
@@ -171,6 +196,7 @@ def logout_all(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MessageResponse:
+    require_local_auth()
     logout_all_sessions(db, user=current_user, request=request)
     clear_refresh_cookie(response)
     return MessageResponse(message="All sessions logged out")
@@ -189,6 +215,7 @@ def update_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MessageResponse:
+    require_local_auth()
     change_password(
         db,
         user=current_user,
