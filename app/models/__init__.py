@@ -11,18 +11,27 @@ from app.models.auth import (
     User,
 )
 from app.models.chatwoot import ChatwootConnection, ChatwootEvent
+from app.models.api_config import ApiDocumentationSource, ApiEndpoint, ApiServer
+from app.models.auth import AuthAuditEvent, AuthEmailToken, AuthSession, User
+from app.models.company import BrandSettings, Company, CompanyMember
+from app.models.jobs import BackgroundJob
+from app.models.knowledge import KnowledgeDocument
+from app.models.uploads import CompanyUpload
 
 __all__ = [
     "ApiDocumentationSource",
     "ApiEndpoint",
     "ApiServer",
     "AuthAuditEvent",
+    "AuthEmailToken",
     "AuthSession",
+    "BackgroundJob",
     "BrandSettings",
     "ChatwootConnection",
     "ChatwootEvent",
     "Company",
     "CompanyMember",
     "CompanyUpload",
+    "KnowledgeDocument",
     "User",
 ]
