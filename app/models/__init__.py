@@ -3,7 +3,7 @@ from app.models.auth import AuthAuditEvent, AuthEmailToken, AuthSession, User
 from app.models.chatwoot import ChatwootConnection, ChatwootEvent
 from app.models.company import BrandSettings, Company, CompanyMember
 from app.models.jobs import BackgroundJob
-from app.models.knowledge import KnowledgeDocument
+from app.models.knowledge import KnowledgeDocument, WebsiteCrawlCandidate, WebsiteCrawlJob
 from app.models.uploads import CompanyUpload
 
 __all__ = [
@@ -21,5 +21,7 @@ __all__ = [
     "CompanyMember",
     "CompanyUpload",
     "KnowledgeDocument",
+    "WebsiteCrawlCandidate",
+    "WebsiteCrawlJob",
     "User",
 ]

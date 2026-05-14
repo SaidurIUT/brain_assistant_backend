@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     query_llm_model: str = Field(default="qwen3.5:0.8b", alias="QUERY_LLM_MODEL")
     lightrag_working_dir: str = Field(default="./lightrag_storage", alias="LIGHTRAG_WORKING_DIR")
 
+    # Website crawler AI URL selection (OpenAI-compatible Chat Completions API)
+    crawl_ai_base_url: str = Field(default="https://api.deepseek.com", alias="CRAWL_AI_BASE_URL")
+    crawl_ai_api_key: str = Field(default="", alias="CRAWL_AI_API_KEY")
+    crawl_ai_model: str = Field(default="deepseek-v4-flash", alias="CRAWL_AI_MODEL")
+
     # Chatwoot AgentBot webhook — fallbacks for local dev before a chatwoot_connections row exists
     chatwoot_webhook_secret: str = Field(default="", alias="CHATWOOT_WEBHOOK_SECRET")
     chatwoot_base_url: str = Field(default="", alias="CHATWOOT_BASE_URL")
