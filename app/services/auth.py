@@ -17,7 +17,7 @@ from app.core.security import (
     password_needs_rehash,
     verify_password,
 )
-from app.models.auth import AuthAuditEvent, AuthEmailToken, AuthSession, CompanyMember, User
+from app.models import AuthAuditEvent, AuthEmailToken, AuthSession, CompanyMember, User
 from app.schemas.auth import AcceptInvitationRequest, ResetPasswordRequest, RegisterRequest
 from app.services.email import frontend_url, send_email
 from app.services.settings import create_default_workspace
