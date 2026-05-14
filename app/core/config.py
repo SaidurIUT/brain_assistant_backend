@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     invitation_expire_days: int = Field(default=7, alias="INVITATION_EXPIRE_DAYS")
     upload_storage_path: str = Field(default="storage/uploads", alias="UPLOAD_STORAGE_PATH")
     upload_max_bytes: int = Field(default=25 * 1024 * 1024, alias="UPLOAD_MAX_BYTES")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    celery_task_always_eager: bool = Field(default=False, alias="CELERY_TASK_ALWAYS_EAGER")
+    celery_task_eager_propagates: bool = Field(default=False, alias="CELERY_TASK_EAGER_PROPAGATES")
 
     # Celery / Redis
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
