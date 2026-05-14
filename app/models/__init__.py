@@ -1,18 +1,6 @@
-from app.models.auth import (
-    ApiDocumentationSource,
-    ApiEndpoint,
-    ApiServer,
-    AuthAuditEvent,
-    AuthSession,
-    BrandSettings,
-    Company,
-    CompanyMember,
-    CompanyUpload,
-    User,
-)
-from app.models.chatwoot import ChatwootConnection, ChatwootEvent
 from app.models.api_config import ApiDocumentationSource, ApiEndpoint, ApiServer
 from app.models.auth import AuthAuditEvent, AuthEmailToken, AuthSession, User
+from app.models.chatwoot import ChatwootConnection, ChatwootEvent
 from app.models.company import BrandSettings, Company, CompanyMember
 from app.models.jobs import BackgroundJob
 from app.models.knowledge import KnowledgeDocument

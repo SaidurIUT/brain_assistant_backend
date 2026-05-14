@@ -1,15 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.auth import User
-from app.services import rag_service
 from app.models import KnowledgeDocument, User
 from app.schemas.auth import MessageResponse
 from app.schemas.knowledge import (
@@ -18,6 +15,7 @@ from app.schemas.knowledge import (
     KnowledgeSourcePublic,
     WebPageScrapeRequest,
 )
+from app.services import rag_service
 from app.services.auth import audit_event
 from app.services.jobs import create_single_page_web_scrape_job, enqueue_background_job, mark_job_failed
 from app.services.settings import current_company, require_company_admin
@@ -40,6 +38,8 @@ async def ingest_document(
         raise HTTPException(status_code=400, detail="Content cannot be empty")
     await rag_service.ingest(payload.content)
     return {"message": "Document ingested successfully"}
+
+
 def knowledge_source_public(record: KnowledgeDocument) -> KnowledgeSourcePublic:
     return KnowledgeSourcePublic.model_validate(
         {
