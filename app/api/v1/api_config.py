@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.auth import ApiServer, User
+from app.models import ApiServer, User
 from app.schemas.api_config import (
     ApiConfiguratorPublic,
     ApiDocumentationImportRequest,
