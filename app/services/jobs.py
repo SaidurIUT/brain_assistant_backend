@@ -9,6 +9,7 @@ DOCUMENT_TEXT_EXTRACTION = "document_text_extraction"
 SINGLE_PAGE_WEB_SCRAPE = "single_page_web_scrape"
 JOB_QUEUED = "queued"
 JOB_PROCESSING = "processing"
+JOB_INGESTING = "ingesting"
 JOB_COMPLETED = "completed"
 JOB_FAILED = "failed"
 
