@@ -10,6 +10,7 @@ SINGLE_PAGE_WEB_SCRAPE = "single_page_web_scrape"
 WEBSITE_CRAWL_DISCOVERY = "website_crawl_discovery"
 JOB_QUEUED = "queued"
 JOB_PROCESSING = "processing"
+JOB_INGESTING = "ingesting"
 JOB_COMPLETED = "completed"
 JOB_FAILED = "failed"
 

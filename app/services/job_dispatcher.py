@@ -4,12 +4,14 @@ from sqlalchemy.orm import Session
 
 from app.core.datetime import utc_now
 from app.models import BackgroundJob, KnowledgeDocument, WebsiteCrawlJob
+from app.services import rag_service
 from app.services.crawl_discovery import run_website_crawl_discovery
 from app.services.document_extraction import DocumentExtractionError, extract_document_text
 from app.services.jobs import (
     DOCUMENT_TEXT_EXTRACTION,
     JOB_COMPLETED,
     JOB_FAILED,
+    JOB_INGESTING,
     JOB_PROCESSING,
     SINGLE_PAGE_WEB_SCRAPE,
     WEBSITE_CRAWL_DISCOVERY,
@@ -64,13 +66,19 @@ def handle_document_text_extraction(db: Session, job: BackgroundJob) -> None:
         str(job.payload.get("original_filename") or ""),
     )
 
-    now = utc_now()
-    knowledge_document.status = JOB_COMPLETED
     knowledge_document.extracted_text = result.text
     knowledge_document.char_count = len(result.text)
     knowledge_document.document_metadata = result.metadata
-    knowledge_document.completed_at = now
     knowledge_document.error_message = ""
+    knowledge_document.status = JOB_INGESTING
+    db.flush()
+
+    if result.text.strip():
+        rag_service.sync_ingest(result.text)
+
+    now = utc_now()
+    knowledge_document.status = JOB_COMPLETED
+    knowledge_document.completed_at = now
 
     job.status = JOB_COMPLETED
     job.completed_at = now

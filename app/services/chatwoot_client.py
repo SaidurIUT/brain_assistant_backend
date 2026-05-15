@@ -70,3 +70,49 @@ def send_typing_status(
         response.raise_for_status()
     except Exception as exc:
         logger.warning("Failed to set typing_status=%s: %s", typing_on, exc)
+
+
+def fetch_conversation_messages(
+    *,
+    base_url: str,
+    account_id: int,
+    conversation_display_id: int,
+    agent_bot_token: str,
+    limit: int = 10,
+) -> list[dict]:
+    """
+    Return the last N messages of a conversation, oldest-first.
+    Empty list on any failure so the caller can still proceed with just the current message.
+
+    Each item: {"sender": "contact"|"agent"|"bot", "content": "..."}
+    """
+    url = (
+        f"{base_url.rstrip('/')}/api/v1/accounts/{account_id}"
+        f"/conversations/{conversation_display_id}/messages"
+    )
+    try:
+        response = httpx.get(
+            url,
+            headers={"api_access_token": agent_bot_token},
+            timeout=5,
+        )
+        response.raise_for_status()
+        payload = response.json().get("payload", [])
+    except Exception as exc:
+        logger.warning("Failed to fetch conversation history: %s", exc)
+        return []
+
+    # Chatwoot returns newest-first; reverse so context reads chronologically
+    messages = []
+    for m in reversed(payload[:limit]):
+        sender_type = (m.get("sender_type") or "").lower()
+        if sender_type == "contact":
+            role = "contact"
+        elif sender_type == "agentbot":
+            role = "bot"
+        else:
+            role = "agent"
+        content = m.get("content") or ""
+        if content.strip():
+            messages.append({"sender": role, "content": content})
+    return messages
