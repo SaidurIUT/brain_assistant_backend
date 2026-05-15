@@ -47,9 +47,9 @@ services:
       INVITATION_EXPIRE_DAYS: 7
       UPLOAD_STORAGE_PATH: /app/storage/uploads
       UPLOAD_MAX_BYTES: 26214400
-      CRAWL_AI_BASE_URL: ${CRAWL_AI_BASE_URL:-https://api.deepseek.com}
-      CRAWL_AI_API_KEY: ${CRAWL_AI_API_KEY:-}
-      CRAWL_AI_MODEL: ${CRAWL_AI_MODEL:-deepseek-v4-flash}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
       REDIS_URL: redis://brain-assistant-redis:6379/0
     ports:
       - "8010:8010"
@@ -94,9 +94,9 @@ services:
       INVITATION_EXPIRE_DAYS: 7
       UPLOAD_STORAGE_PATH: /app/storage/uploads
       UPLOAD_MAX_BYTES: 26214400
-      CRAWL_AI_BASE_URL: ${CRAWL_AI_BASE_URL:-https://api.deepseek.com}
-      CRAWL_AI_API_KEY: ${CRAWL_AI_API_KEY:-}
-      CRAWL_AI_MODEL: ${CRAWL_AI_MODEL:-deepseek-v4-flash}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
       REDIS_URL: redis://brain-assistant-redis:6379/0
     volumes:
       - ./storage/uploads:/app/storage/uploads:ro
