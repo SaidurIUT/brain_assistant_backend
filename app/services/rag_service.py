@@ -111,3 +111,8 @@ async def ingest(text: str) -> None:
 def sync_query(question: str) -> str:
     """Blocking wrapper for Celery workers."""
     return asyncio.run(query(question))
+
+
+def sync_ingest(text: str) -> None:
+    """Blocking wrapper for Celery workers."""
+    asyncio.run(ingest(text))

@@ -13,6 +13,31 @@ from app.workers.celery_app import celery
 logger = logging.getLogger(__name__)
 
 _FALLBACK_REPLY = "Thanks for your message. I will get back to you shortly."
+_FAILURE_REPLY = "I'm having trouble answering right now. A team member will follow up with you soon."
+
+# How many prior messages to include as context for the RAG query
+_HISTORY_LIMIT = 8
+
+
+def _build_question_with_history(history: list[dict], current_message: str) -> str:
+    """
+    Build a context-aware query for RAG by prepending recent conversation turns.
+    If there's no history, just return the current message verbatim.
+    """
+    if not history:
+        return current_message
+
+    turns = []
+    for msg in history[-_HISTORY_LIMIT:]:
+        speaker = "Customer" if msg["sender"] == "contact" else "Assistant"
+        turns.append(f"{speaker}: {msg['content']}")
+
+    return (
+        "Recent conversation so far:\n"
+        + "\n".join(turns)
+        + f"\n\nNow the customer asks: {current_message}\n"
+        + "Answer the customer's latest question using the knowledge base."
+    )
 
 
 def _clean_reply(reply: str) -> str:
@@ -83,53 +108,82 @@ def process_chatwoot_event(self, event_id: str) -> None:
             event.processed_at = utc_now()
             return
 
-        try:
-            from app.services.chatwoot_client import send_message, send_typing_status
-            from app.services.rag_service import sync_query
+        from app.services.chatwoot_client import (
+            fetch_conversation_messages,
+            send_message,
+            send_typing_status,
+        )
+        from app.services.rag_service import sync_query
 
-            send_typing_status(
+        send_typing_status(
+            base_url=connection["base_url"],
+            account_id=connection["account_id"],
+            conversation_display_id=event.conversation_display_id,
+            agent_bot_token=connection["agent_bot_token"],
+            typing_on=True,
+        )
+
+        try:
+            history = fetch_conversation_messages(
                 base_url=connection["base_url"],
                 account_id=connection["account_id"],
                 conversation_display_id=event.conversation_display_id,
                 agent_bot_token=connection["agent_bot_token"],
-                typing_on=True,
+                limit=_HISTORY_LIMIT,
             )
+            # Drop the latest message from history since event.content is already it
+            prior_history = [m for m in history if m["content"] != (event.content or "")]
+            question = _build_question_with_history(prior_history, event.content or "")
 
-            try:
-                raw_reply = sync_query(event.content or "")
-                reply = _clean_reply(raw_reply)
-                if not reply.strip():
-                    reply = _FALLBACK_REPLY
+            raw_reply = sync_query(question)
+            reply = _clean_reply(raw_reply)
+            if not reply.strip():
+                reply = _FALLBACK_REPLY
 
-                send_message(
-                    base_url=connection["base_url"],
-                    account_id=connection["account_id"],
-                    conversation_display_id=event.conversation_display_id,
-                    content=reply,
-                    agent_bot_token=connection["agent_bot_token"],
-                    agent_bot_id=connection["agent_bot_id"],
-                )
-            finally:
-                send_typing_status(
-                    base_url=connection["base_url"],
-                    account_id=connection["account_id"],
-                    conversation_display_id=event.conversation_display_id,
-                    agent_bot_token=connection["agent_bot_token"],
-                    typing_on=False,
-                )
+            send_message(
+                base_url=connection["base_url"],
+                account_id=connection["account_id"],
+                conversation_display_id=event.conversation_display_id,
+                content=reply,
+                agent_bot_token=connection["agent_bot_token"],
+                agent_bot_id=connection["agent_bot_id"],
+            )
 
             event.reply_content = reply
             event.status = "processed"
             event.processed_at = utc_now()
             logger.info("process_chatwoot_event: event %s replied and processed", event_id)
+
         except Exception as exc:
             logger.exception("process_chatwoot_event: failed to send reply for event %s", event_id)
             try:
                 raise self.retry(exc=exc)
             except self.MaxRetriesExceededError:
+                # Out of retries — send a user-facing failure message so the customer isn't ignored
+                try:
+                    send_message(
+                        base_url=connection["base_url"],
+                        account_id=connection["account_id"],
+                        conversation_display_id=event.conversation_display_id,
+                        content=_FAILURE_REPLY,
+                        agent_bot_token=connection["agent_bot_token"],
+                        agent_bot_id=connection["agent_bot_id"],
+                    )
+                    event.reply_content = _FAILURE_REPLY
+                except Exception as send_exc:
+                    logger.warning("Could not send failure-state message: %s", send_exc)
                 event.status = "failed"
                 event.error_message = str(exc)
                 event.processed_at = utc_now()
+
+        finally:
+            send_typing_status(
+                base_url=connection["base_url"],
+                account_id=connection["account_id"],
+                conversation_display_id=event.conversation_display_id,
+                agent_bot_token=connection["agent_bot_token"],
+                typing_on=False,
+            )
 
 
 def _resolve_connection(db, account_id: int | None, inbox_id: int | None) -> dict | None:
