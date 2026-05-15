@@ -343,18 +343,18 @@ def prompt_selected_urls(prompt: str, discovered: list[DiscoveredUrl]) -> set[st
 
 
 def prompt_selected_urls_with_ai(prompt: str, discovered: list[DiscoveredUrl]) -> set[str]:
-    if not settings.crawl_ai_api_key:
+    if not settings.llm_api_key:
         return set()
     sample = discovered[:200]
     items = [{"index": index, "url": item.url, "title": item.title} for index, item in enumerate(sample)]
     response = httpx.post(
-        f"{settings.crawl_ai_base_url.rstrip('/')}/chat/completions",
+        f"{settings.llm_base_url.rstrip('/')}/chat/completions",
         headers={
-            "Authorization": f"Bearer {settings.crawl_ai_api_key}",
+            "Authorization": f"Bearer {settings.llm_api_key}",
             "Content-Type": "application/json",
         },
         json={
-            "model": settings.crawl_ai_model,
+            "model": settings.llm_model,
             "messages": [
                 {
                     "role": "system",
