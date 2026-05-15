@@ -2,7 +2,7 @@ name: brain-assistant-backend
 
 services:
   brain-assistant-db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: brain-assistant-db
     environment:
       POSTGRES_DB: brain_assistant_backend
@@ -32,6 +32,11 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: 15
       REFRESH_TOKEN_EXPIRE_DAYS: 30
       AUTH_COOKIE_SECURE: "false"
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-http://localhost:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brain-assistant}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-brain-assistant-onboarding}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-}
       MAIL_MODE: dev
       MAIL_FROM: Brain Assistant <no-reply@brainassistant.local>
       SMTP_HOST: brain-assistant-mailhog
@@ -42,6 +47,9 @@ services:
       INVITATION_EXPIRE_DAYS: 7
       UPLOAD_STORAGE_PATH: /app/storage/uploads
       UPLOAD_MAX_BYTES: 26214400
+      CRAWL_AI_BASE_URL: ${CRAWL_AI_BASE_URL:-https://api.deepseek.com}
+      CRAWL_AI_API_KEY: ${CRAWL_AI_API_KEY:-}
+      CRAWL_AI_MODEL: ${CRAWL_AI_MODEL:-deepseek-v4-flash}
       REDIS_URL: redis://brain-assistant-redis:6379/0
     ports:
       - "8010:8010"
@@ -71,6 +79,11 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: 15
       REFRESH_TOKEN_EXPIRE_DAYS: 30
       AUTH_COOKIE_SECURE: "false"
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-http://localhost:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brain-assistant}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-brain-assistant-onboarding}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-}
       MAIL_MODE: dev
       MAIL_FROM: Brain Assistant <no-reply@brainassistant.local>
       SMTP_HOST: brain-assistant-mailhog
@@ -81,6 +94,9 @@ services:
       INVITATION_EXPIRE_DAYS: 7
       UPLOAD_STORAGE_PATH: /app/storage/uploads
       UPLOAD_MAX_BYTES: 26214400
+      CRAWL_AI_BASE_URL: ${CRAWL_AI_BASE_URL:-https://api.deepseek.com}
+      CRAWL_AI_API_KEY: ${CRAWL_AI_API_KEY:-}
+      CRAWL_AI_MODEL: ${CRAWL_AI_MODEL:-deepseek-v4-flash}
       REDIS_URL: redis://brain-assistant-redis:6379/0
     volumes:
       - ./storage/uploads:/app/storage/uploads:ro

@@ -3,8 +3,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.datetime import utc_now
-from app.models import BackgroundJob, KnowledgeDocument
+from app.models import BackgroundJob, KnowledgeDocument, WebsiteCrawlJob
 from app.services import rag_service
+from app.services.crawl_discovery import run_website_crawl_discovery
 from app.services.document_extraction import DocumentExtractionError, extract_document_text
 from app.services.jobs import (
     DOCUMENT_TEXT_EXTRACTION,
@@ -13,6 +14,7 @@ from app.services.jobs import (
     JOB_INGESTING,
     JOB_PROCESSING,
     SINGLE_PAGE_WEB_SCRAPE,
+    WEBSITE_CRAWL_DISCOVERY,
 )
 from app.services.web_scraper import WebScrapeError, scrape_single_page
 
@@ -129,6 +131,32 @@ def handle_single_page_web_scrape(db: Session, job: BackgroundJob) -> None:
     db.flush()
 
 
+def handle_website_crawl_discovery(db: Session, job: BackgroundJob) -> None:
+    crawl_job_id = job.payload.get("crawl_job_id")
+    if not crawl_job_id:
+        raise ValueError("Missing website crawl job id")
+
+    crawl_job = db.get(WebsiteCrawlJob, UUID(str(crawl_job_id)))
+    if crawl_job is None:
+        raise ValueError("Website crawl job not found")
+
+    run_website_crawl_discovery(db, crawl_job)
+    if crawl_job.status == JOB_FAILED:
+        fail_job(db, job, crawl_job.error_message or "Website crawl discovery failed")
+        return
+
+    now = utc_now()
+    job.status = JOB_COMPLETED
+    job.completed_at = now
+    job.error_message = ""
+    job.result = {
+        "crawl_job_id": str(crawl_job.id),
+        "total_discovered": crawl_job.total_discovered,
+        "total_matched": crawl_job.total_matched,
+    }
+    db.flush()
+
+
 def fail_job(db: Session, job: BackgroundJob, message: str) -> None:
     now = utc_now()
     job.status = JOB_FAILED
@@ -147,9 +175,17 @@ def fail_job(db: Session, job: BackgroundJob, message: str) -> None:
             knowledge_document.status = JOB_FAILED
             knowledge_document.error_message = message
             knowledge_document.completed_at = now
+    elif job.job_type == WEBSITE_CRAWL_DISCOVERY:
+        crawl_job_id = job.payload.get("crawl_job_id")
+        crawl_job = db.get(WebsiteCrawlJob, UUID(str(crawl_job_id))) if crawl_job_id else None
+        if crawl_job is not None:
+            crawl_job.status = JOB_FAILED
+            crawl_job.error_message = message
+            crawl_job.completed_at = now
 
 
 JOB_HANDLERS = {
     DOCUMENT_TEXT_EXTRACTION: handle_document_text_extraction,
     SINGLE_PAGE_WEB_SCRAPE: handle_single_page_web_scrape,
+    WEBSITE_CRAWL_DISCOVERY: handle_website_crawl_discovery,
 }
