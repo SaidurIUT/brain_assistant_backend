@@ -66,10 +66,10 @@ class Settings(BaseSettings):
     # Minimum chunks that must clear the threshold for the bot to answer.
     rag_min_chunks_for_answer: int = Field(default=1, alias="RAG_MIN_CHUNKS_FOR_ANSWER")
 
-    # Website crawler AI URL selection (OpenAI-compatible Chat Completions API)
-    crawl_ai_base_url: str = Field(default="https://api.deepseek.com", alias="CRAWL_AI_BASE_URL")
-    crawl_ai_api_key: str = Field(default="", alias="CRAWL_AI_API_KEY")
-    crawl_ai_model: str = Field(default="deepseek-v4-flash", alias="CRAWL_AI_MODEL")
+    # OpenAI-compatible Chat Completions endpoint (used by the website crawler)
+    llm_base_url: str = Field(default="https://api.deepseek.com", alias="LLM_BASE_URL")
+    llm_api_key: str = Field(default="", alias="LLM_API_KEY")
+    llm_model: str = Field(default="deepseek-v4-flash", alias="LLM_MODEL")
 
     # Chatwoot AgentBot webhook — fallbacks for local dev before a chatwoot_connections row exists
     chatwoot_webhook_secret: str = Field(default="", alias="CHATWOOT_WEBHOOK_SECRET")
