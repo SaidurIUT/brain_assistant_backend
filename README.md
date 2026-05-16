@@ -1,6 +1,8 @@
 # Brain Assistant Backend
 
-FastAPI backend for Brain Assistant.
+FastAPI backend for Brain Assistant — an AI customer-support layer that sits on top of [Chatwoot](https://www.chatwoot.com/). Admins onboard a workspace, connect their Chatwoot inbox, feed in knowledge (uploaded files, scraped pages, or full website crawls), and the backend then answers customer messages from that knowledge — handing off to a human when retrieval confidence is low.
+
+The service runs as a FastAPI app plus a Celery worker. Knowledge ingestion and retrieval are powered by [LightRAG](https://github.com/HKUDS/LightRAG) with pgvector storage and Ollama-served LLMs.
 
 ## Ports
 
@@ -98,11 +100,64 @@ REDIS_URL=redis://localhost:56379/0 python -m celery -A app.jobs.celery_app:cele
 - Logout-all revokes every active session for the user.
 - Administrators invite members from settings; invited people receive an email and set their first password through `POST /api/v1/auth/accept-invitation`.
 
-## Knowledge Base Extraction
+## Chatbot Pipeline
 
-Document uploads create a generic background job with `job_type=document_text_extraction`.
-Workers extract selectable text from PDF, Word, Markdown, text, and CSV files, then store the full extracted text and status in Postgres.
-Scanned PDFs are marked failed with a clear OCR-not-supported error because OCR is intentionally out of scope for this phase.
+Customer messages flow Chatwoot → backend → Chatwoot, all over HTTP. The backend never touches Chatwoot's database.
+
+1. Chatwoot delivers an AgentBot webhook to `POST /api/v1/webhooks/chatwoot/agent-bot`. The handler verifies the HMAC signature, deduplicates by delivery id, and writes a `chatwoot_events` row.
+2. A Celery task picks up the event, resolves the matching `chatwoot_connections` row for the inbox, fetches the last 8 messages from Chatwoot for conversational context, and sends a typing-on indicator.
+3. The worker calls `rag_service.query_with_confidence`, which probes LightRAG retrieval first (cheap, no LLM). One of four outcomes is posted back to the conversation:
+
+   | Outcome | When | Customer-facing reply |
+   |---|---|---|
+   | **answer** | retrieval cleared the confidence threshold | LightRAG-generated grounded answer |
+   | **handoff** | zero chunks cleared the threshold | "I'm not certain about that — let me get a teammate to help." |
+   | **fallback** | LLM returned empty despite context | "Thanks for your message. I will get back to you shortly." |
+   | **failure** | LLM/Ollama unreachable after retries | "I'm having trouble answering right now. A team member will follow up." |
+
+4. The reply is stored in `chatwoot_events.reply_content` and a structured log line records `confident`, `chunks`, `outcome` per event so the threshold can be tuned against real traffic.
+
+A local-dev fallback exists: if no `chatwoot_connections` row matches, the worker reads `CHATWOOT_*` env vars instead. This is single-tenant and only suitable for the first developer's local setup.
+
+## Knowledge Base & Ingestion
+
+Three input paths reach the same RAG index. Each runs as a Celery background job and writes a `knowledge_documents` row that progresses through `queued → processing → ingesting → completed` (or `failed`).
+
+### 1. File uploads (US-08)
+
+`POST /api/v1/uploads/documents` with a PDF, DOCX, Markdown, plain text, or CSV file. A `document_text_extraction` job extracts text, then calls `rag_service.sync_ingest`. Scanned PDFs without selectable text are marked failed (OCR is intentionally out of scope for this phase).
+
+### 2. Single-page web scrape (US-07)
+
+`POST /api/v1/knowledge/web-pages` with a URL. A `single_page_web_scrape` job uses Playwright (headless Chromium) to render the page, strips `script/style/nav/footer/form` etc., and ingests the cleaned text. Pages that render no readable text (login walls, empty SPAs) skip ingest and complete cleanly.
+
+### 3. Full website crawl (US-07)
+
+`POST /api/v1/knowledge/crawls` with a root URL and either a list of category IDs (`policy`, `pricing`, `docs`, etc.) or a free-form prompt ("only pages about returns"). A `website_crawl_discovery` job parses sitemaps + does BFS link discovery, optionally classifies URLs via the configured LLM, and writes one `website_crawl_candidates` row per discovered URL.
+
+Admin then reviews the candidates and selects which URLs to actually scrape via `POST /api/v1/knowledge/crawls/{id}/queue-pages`. Selected URLs are queued as individual `single_page_web_scrape` jobs and feed the same ingest path as #2.
+
+### Background workers
+
+Two Celery workers run different queues:
+
+- **Webhook worker** (`app.workers.celery_app`): handles Chatwoot events. Fast-turnaround, high concurrency.
+- **Jobs worker** (`app.jobs.celery_app`, queue `brain-jobs`): runs ingestion. `--concurrency=1` because LightRAG entity extraction is GPU-bound and serializes well.
+
+### LightRAG runtime
+
+The backend uses LightRAG in-process with a dual-model strategy:
+
+- **Ingest model** (`INGEST_LLM_MODEL`, default `qwen3.5:9b`) for entity extraction — slow, capable, infrequent.
+- **Query model** (`QUERY_LLM_MODEL`, default `qwen3.5:0.8b`) for answer generation — fast, runs on every customer message.
+
+Both share the same pgvector tables and a local NetworkX graph file under `LIGHTRAG_WORKING_DIR`. Embeddings use `nomic-embed-text` (768-dim).
+
+Confidence gating is tunable via `RAG_RETRIEVAL_THRESHOLD` (cosine floor, default `0.3`) and `RAG_MIN_CHUNKS_FOR_ANSWER` (default `1`).
+
+### Multi-tenancy caveat
+
+`companies.id` (UUID) is the tenant identifier and is foreign-keyed by every tenant-scoped table (`company_uploads`, `knowledge_documents`, `chatwoot_connections`, `background_jobs`, etc.). **LightRAG's vector index and graph file are not yet partitioned by `company_id`** — they all share one workspace. This is a known issue scheduled to be fixed before any real second customer is onboarded.
 
 ## Email Modes
 
