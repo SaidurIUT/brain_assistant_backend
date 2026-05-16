@@ -17,6 +17,8 @@ document ingested with 9b is queryable with 0.8b.
 import asyncio
 import logging
 import os
+from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlparse
 
 import numpy as np
@@ -29,6 +31,27 @@ from lightrag.utils import EmbeddingFunc
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class QueryResult:
+    """Result of a confidence-gated query.
+
+    answer is None when no relevant context was found — caller should hand off
+    to a human instead of speaking on behalf of an empty knowledge base.
+    """
+
+    answer: str | None
+    confident: bool
+    chunk_count: int
+
+
+def _evaluate_retrieval(data_result: dict[str, Any] | None) -> int:
+    """Pure: count chunks returned by aquery_data. Returns 0 on any failure shape."""
+    if not isinstance(data_result, dict) or data_result.get("status") != "success":
+        return 0
+    chunks = data_result.get("data", {}).get("chunks") or []
+    return len(chunks)
 
 _EMBED_DIM = 768  # nomic-embed-text output dimension
 
@@ -81,7 +104,9 @@ def _make_rag(llm_model: str) -> LightRAG:
             max_token_size=8192,
             func=_embed,
         ),
-        vector_db_storage_cls_kwargs={"cosine_better_than_threshold": 0.2},
+        vector_db_storage_cls_kwargs={
+            "cosine_better_than_threshold": settings.rag_retrieval_threshold,
+        },
     )
 
 
@@ -94,6 +119,28 @@ async def query(question: str) -> str:
             question, param=QueryParam(mode="naive", enable_rerank=False)
         )
         return result or ""
+    finally:
+        await rag.finalize_storages()
+
+
+async def query_with_confidence(question: str) -> QueryResult:
+    """Probe retrieval before paying for LLM generation.
+
+    aquery_data returns the retrieved chunks without running the answer model.
+    If nothing clears the configured cosine threshold we skip the LLM entirely
+    and signal handoff — saving latency and avoiding ungrounded replies.
+    """
+    rag = _make_rag(settings.query_llm_model)
+    await rag.initialize_storages()
+    try:
+        param = QueryParam(mode="naive", enable_rerank=False)
+        data_result = await rag.aquery_data(question, param=param)
+        chunk_count = _evaluate_retrieval(data_result)
+        if chunk_count < settings.rag_min_chunks_for_answer:
+            return QueryResult(answer=None, confident=False, chunk_count=chunk_count)
+
+        answer = await rag.aquery(question, param=param)
+        return QueryResult(answer=answer or "", confident=True, chunk_count=chunk_count)
     finally:
         await rag.finalize_storages()
 
@@ -111,6 +158,11 @@ async def ingest(text: str) -> None:
 def sync_query(question: str) -> str:
     """Blocking wrapper for Celery workers."""
     return asyncio.run(query(question))
+
+
+def sync_query_with_confidence(question: str) -> QueryResult:
+    """Blocking wrapper for Celery workers."""
+    return asyncio.run(query_with_confidence(question))
 
 
 def sync_ingest(text: str) -> None:

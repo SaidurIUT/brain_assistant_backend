@@ -14,9 +14,29 @@ logger = logging.getLogger(__name__)
 
 _FALLBACK_REPLY = "Thanks for your message. I will get back to you shortly."
 _FAILURE_REPLY = "I'm having trouble answering right now. A team member will follow up with you soon."
+_HANDOFF_REPLY = (
+    "I'm not certain about that — let me get a teammate to help. "
+    "They'll be in touch shortly."
+)
 
 # How many prior messages to include as context for the RAG query
 _HISTORY_LIMIT = 8
+
+
+def _choose_reply(query_result, cleaner) -> str:
+    """Pure: map a QueryResult into the customer-facing string.
+
+    Three distinct outcomes for clear agent triage:
+      - not confident      → handoff (no relevant context found)
+      - confident + empty  → fallback (LLM returned nothing despite context)
+      - confident + answer → cleaned LightRAG answer
+    """
+    if not query_result.confident:
+        return _HANDOFF_REPLY
+    cleaned = cleaner(query_result.answer or "")
+    if not cleaned.strip():
+        return _FALLBACK_REPLY
+    return cleaned
 
 
 def _build_question_with_history(history: list[dict], current_message: str) -> str:
@@ -78,7 +98,7 @@ def process_chatwoot_event(self, event_id: str) -> None:
       - Mark the event processed
 
     Outgoing messages (bot replies firing back as webhooks) are skipped to
-    prevent infinite loops. US6 will add confidence/handoff logic here.
+    prevent infinite loops.
     """
     with get_worker_db() as db:
         event = db.scalar(select(ChatwootEvent).where(ChatwootEvent.id == UUID(event_id)))
@@ -113,7 +133,7 @@ def process_chatwoot_event(self, event_id: str) -> None:
             send_message,
             send_typing_status,
         )
-        from app.services.rag_service import sync_query
+        from app.services.rag_service import sync_query_with_confidence
 
         send_typing_status(
             base_url=connection["base_url"],
@@ -135,10 +155,8 @@ def process_chatwoot_event(self, event_id: str) -> None:
             prior_history = [m for m in history if m["content"] != (event.content or "")]
             question = _build_question_with_history(prior_history, event.content or "")
 
-            raw_reply = sync_query(question)
-            reply = _clean_reply(raw_reply)
-            if not reply.strip():
-                reply = _FALLBACK_REPLY
+            query_result = sync_query_with_confidence(question)
+            reply = _choose_reply(query_result, _clean_reply)
 
             send_message(
                 base_url=connection["base_url"],
@@ -152,7 +170,13 @@ def process_chatwoot_event(self, event_id: str) -> None:
             event.reply_content = reply
             event.status = "processed"
             event.processed_at = utc_now()
-            logger.info("process_chatwoot_event: event %s replied and processed", event_id)
+            logger.info(
+                "process_chatwoot_event: event=%s confident=%s chunks=%d outcome=%s",
+                event_id,
+                query_result.confident,
+                query_result.chunk_count,
+                "handoff" if not query_result.confident else "answer",
+            )
 
         except Exception as exc:
             logger.exception("process_chatwoot_event: failed to send reply for event %s", event_id)
