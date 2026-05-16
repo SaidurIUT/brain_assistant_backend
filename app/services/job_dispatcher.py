@@ -110,15 +110,21 @@ def handle_single_page_web_scrape(db: Session, job: BackgroundJob) -> None:
         int(job.payload.get("wait_seconds") or 2),
     )
 
-    now = utc_now()
-    knowledge_document.status = JOB_COMPLETED
     knowledge_document.source_title = result.title[:500]
     knowledge_document.source_url = result.final_url
     knowledge_document.extracted_text = result.text
     knowledge_document.char_count = len(result.text)
     knowledge_document.document_metadata = result.metadata
-    knowledge_document.completed_at = now
     knowledge_document.error_message = ""
+    knowledge_document.status = JOB_INGESTING
+    db.flush()
+
+    if result.text.strip():
+        rag_service.sync_ingest(result.text)
+
+    now = utc_now()
+    knowledge_document.status = JOB_COMPLETED
+    knowledge_document.completed_at = now
 
     job.status = JOB_COMPLETED
     job.completed_at = now
