@@ -60,8 +60,13 @@ class Settings(BaseSettings):
     # Tiny fast model for answer generation during queries (~5s response)
     query_llm_model: str = Field(default="qwen3.5:0.8b", alias="QUERY_LLM_MODEL")
     lightrag_working_dir: str = Field(default="./lightrag_storage", alias="LIGHTRAG_WORKING_DIR")
+    # Cosine similarity floor for retrieval. Chunks below this drop out of the
+    # vector search — if none pass, the bot hands off instead of guessing.
+    rag_retrieval_threshold: float = Field(default=0.3, alias="RAG_RETRIEVAL_THRESHOLD")
+    # Minimum chunks that must clear the threshold for the bot to answer.
+    rag_min_chunks_for_answer: int = Field(default=1, alias="RAG_MIN_CHUNKS_FOR_ANSWER")
 
-    # Website crawler AI URL selection (OpenAI-compatible Chat Completions API)
+    # OpenAI-compatible Chat Completions endpoint (used by the website crawler)
     llm_base_url: str = Field(default="https://api.deepseek.com", alias="LLM_BASE_URL")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
     llm_model: str = Field(default="deepseek-v4-flash", alias="LLM_MODEL")

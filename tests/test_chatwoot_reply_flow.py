@@ -6,9 +6,13 @@ worker's branching: outgoing messages get skipped, missing connection fails
 cleanly, and the reply is cleaned of LightRAG markdown before storing.
 """
 
-from unittest.mock import MagicMock, patch
-
-from app.workers.process_event import _build_question_with_history, _clean_reply
+from app.services.rag_service import QueryResult
+from app.workers.process_event import (
+    _HANDOFF_REPLY,
+    _build_question_with_history,
+    _choose_reply,
+    _clean_reply,
+)
 
 
 def test_clean_reply_extracts_answer_section() -> None:
@@ -56,3 +60,25 @@ def test_build_question_includes_recent_turns() -> None:
     assert "Assistant: Hello! How can I help?" in question
     assert "Customer: I have a billing question" in question
     assert "can you help me?" in question
+
+
+def test_low_confidence_query_routes_to_handoff() -> None:
+    result = QueryResult(answer=None, confident=False, chunk_count=0)
+    assert _choose_reply(result, _clean_reply) == _HANDOFF_REPLY
+
+
+def test_high_confidence_query_returns_cleaned_answer() -> None:
+    result = QueryResult(
+        answer="### Answer\n\nBrain Assistant is an AI support tool.",
+        confident=True,
+        chunk_count=3,
+    )
+    assert _choose_reply(result, _clean_reply) == "Brain Assistant is an AI support tool."
+
+
+def test_confident_but_empty_answer_falls_back() -> None:
+    """LLM occasionally returns whitespace despite having context — don't ship that."""
+    result = QueryResult(answer="   ", confident=True, chunk_count=2)
+    reply = _choose_reply(result, _clean_reply)
+    assert reply != _HANDOFF_REPLY
+    assert "get back to you" in reply.lower()
