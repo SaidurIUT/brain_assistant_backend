@@ -50,13 +50,15 @@ class IngestRequest(BaseModel):
 @router.post("/ingest", status_code=202)
 async def ingest_document(
     payload: IngestRequest,
+    company_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Ingest a text document into the LightRAG knowledge base."""
+    """Ingest a text document into the caller's tenant knowledge base."""
     if not payload.content.strip():
         raise HTTPException(status_code=400, detail="Content cannot be empty")
-    await rag_service.ingest(payload.content)
+    company = current_company(db, current_user, company_id)
+    await rag_service.ingest(payload.content, company.id)
     return {"message": "Document ingested successfully"}
 
 

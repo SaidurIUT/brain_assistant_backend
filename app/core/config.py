@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     chatwoot_account_id: int = Field(default=0, alias="CHATWOOT_ACCOUNT_ID")
     chatwoot_agent_bot_id: int = Field(default=0, alias="CHATWOOT_AGENT_BOT_ID")
     chatwoot_agent_bot_token: str = Field(default="", alias="CHATWOOT_AGENT_BOT_TOKEN")
+    # Empty in prod (use chatwoot_connections rows). In dev, set to a real Company
+    # UUID so the env-var fallback path can route RAG queries to a tenant workspace.
+    chatwoot_fallback_company_id: str = Field(default="", alias="CHATWOOT_FALLBACK_COMPANY_ID")
 
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":

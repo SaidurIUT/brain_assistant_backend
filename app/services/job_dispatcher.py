@@ -74,7 +74,7 @@ def handle_document_text_extraction(db: Session, job: BackgroundJob) -> None:
     db.flush()
 
     if result.text.strip():
-        rag_service.sync_ingest(result.text)
+        rag_service.sync_ingest(result.text, knowledge_document.company_id)
 
     now = utc_now()
     knowledge_document.status = JOB_COMPLETED
@@ -120,7 +120,7 @@ def handle_single_page_web_scrape(db: Session, job: BackgroundJob) -> None:
     db.flush()
 
     if result.text.strip():
-        rag_service.sync_ingest(result.text)
+        rag_service.sync_ingest(result.text, knowledge_document.company_id)
 
     now = utc_now()
     knowledge_document.status = JOB_COMPLETED

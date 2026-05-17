@@ -19,8 +19,10 @@ from app.services.web_scraper import WebScrapeResult
 
 def _make_job_and_doc():
     doc_id = uuid4()
+    company_id = uuid4()
     knowledge_document = SimpleNamespace(
         id=doc_id,
+        company_id=company_id,
         status=JOB_PROCESSING,
         source_title="",
         source_url="",
@@ -67,7 +69,7 @@ def test_scrape_feeds_text_into_rag_ingest() -> None:
     with scrape, ingest as mock_ingest:
         job_dispatcher.handle_single_page_web_scrape(db, job)
 
-    mock_ingest.assert_called_once_with("Our refund policy lasts 30 days.")
+    mock_ingest.assert_called_once_with("Our refund policy lasts 30 days.", doc.company_id)
     assert doc.extracted_text == "Our refund policy lasts 30 days."
     assert doc.source_url == "https://example.com/faq"
     assert doc.status == JOB_COMPLETED
@@ -134,7 +136,7 @@ def test_status_transitions_through_ingesting() -> None:
 
     observed_status_at_ingest_time = []
 
-    def capture_status(_text: str) -> None:
+    def capture_status(_text: str, _company_id) -> None:
         observed_status_at_ingest_time.append(doc.status)
 
     scrape = patch.object(job_dispatcher, "scrape_single_page", return_value=_scrape_result())
