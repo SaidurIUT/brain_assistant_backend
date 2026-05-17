@@ -1,17 +1,14 @@
 """
-LightRAG service — in-process, with separate models for ingest vs query.
+LightRAG service — cloud-LLM, in-process orchestration.
 
-LightRAG's entity-extraction prompts need a capable model (9b) — small models
-hallucinate the JSON structure or hang. But query-time answer generation only
-needs to read the retrieved context and produce a short reply, which a tiny
-model (0.8b) handles in seconds.
-
-So we use two configurations against the same storage:
-  - INGEST_MODEL → qwen3.5:9b (slow, infrequent, runs in /knowledge/ingest)
-  - QUERY_MODEL  → qwen3.5:0.8b (fast, runs on every customer message)
-
-Both share the same postgres tables and the same NetworkX graph file, so a
-document ingested with 9b is queryable with 0.8b.
+Query and ingest both go to DeepSeek's OpenAI-compatible Chat Completions API
+(via LightRAG's openai_complete_if_cache). Embeddings use BAAI's bge-m3 served
+locally by Ollama (1024-dim, multilingual). The dual-model split that the old
+codebase used (qwen 9b for ingest, qwen 0.8b for query) is collapsed — DeepSeek
+Flash is capable enough for LightRAG's strict-JSON entity extraction and fast
+enough for per-query answer generation, so a single LLM_MODEL setting covers
+both paths. Bump to a stronger DeepSeek model via env if entity extraction
+quality slips.
 """
 
 import asyncio
@@ -25,7 +22,7 @@ import numpy as np
 import ollama as ollama_client
 
 from lightrag import LightRAG, QueryParam
-from lightrag.llm.ollama import ollama_model_complete
+from lightrag.llm.openai import openai_complete_if_cache
 from lightrag.utils import EmbeddingFunc
 
 from app.core.config import settings
@@ -53,7 +50,49 @@ def _evaluate_retrieval(data_result: dict[str, Any] | None) -> int:
     chunks = data_result.get("data", {}).get("chunks") or []
     return len(chunks)
 
-_EMBED_DIM = 768  # nomic-embed-text output dimension
+
+_EMBED_DIM = 1024  # bge-m3 output dimension
+
+# Customer-support formatting instructions injected as the user_prompt on every
+# query. Keeps replies clean for a chat widget — direct answer, short
+# paragraphs, no LightRAG-style "### Answer" / "### References" headers leaking
+# through to customers.
+_CUSTOMER_SUPPORT_PROMPT = """\
+You are a customer support assistant. Reply directly to the customer using ONLY
+the provided context.
+
+Formatting rules:
+- Lead with the answer in the first 1-2 sentences.
+- Keep paragraphs short (2-3 sentences).
+- Use bullet points when listing items, steps, or options.
+- Do not include section headers like "### Answer", "### References", or
+  "### Content & Grounding".
+- Do not list source document names at the end.
+- Do not say "based on the context" or "according to the documents" — answer
+  naturally as if you are the company speaking to the customer.
+- If the context doesn't cover the question, say so in one short sentence
+  without apologizing repeatedly.
+
+Tone: warm, concise, professional. Match the level of formality the customer
+is using. Avoid filler phrases."""
+
+
+async def _llm_complete(
+    prompt: str,
+    system_prompt: str | None = None,
+    history_messages: list[dict[str, Any]] | None = None,
+    **kwargs: Any,
+) -> str:
+    """Bridge LightRAG's llm_model_func contract to DeepSeek's OpenAI-compatible API."""
+    return await openai_complete_if_cache(
+        settings.llm_model,
+        prompt,
+        system_prompt=system_prompt,
+        history_messages=history_messages or [],
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key,
+        **kwargs,
+    )
 
 
 def _configure_pg_env() -> None:
@@ -73,17 +112,17 @@ def _configure_pg_env() -> None:
 
 
 async def _embed(texts: list[str]) -> np.ndarray:
-    """Raw Ollama embedding — bypasses lightrag's ollama_embed which hardcodes dim=1024."""
+    """bge-m3 embedding via Ollama on the office PC. 1024-dim, multilingual."""
     client = ollama_client.AsyncClient(host=settings.ollama_base_url)
     response = await client.embed(
         model=settings.embed_model,
         input=texts,
-        keep_alive="30m",  # keep embed model in VRAM between queries
+        keep_alive="30m",  # keep the model warm between queries
     )
     return np.array(response.embeddings)
 
 
-def _make_rag(llm_model: str) -> LightRAG:
+def _make_rag() -> LightRAG:
     _configure_pg_env()
     os.makedirs(settings.lightrag_working_dir, exist_ok=True)
     return LightRAG(
@@ -92,13 +131,8 @@ def _make_rag(llm_model: str) -> LightRAG:
         vector_storage="PGVectorStorage",
         graph_storage="NetworkXStorage",
         doc_status_storage="PGDocStatusStorage",
-        llm_model_func=ollama_model_complete,
-        llm_model_name=llm_model,
-        llm_model_kwargs={
-            "host": settings.ollama_base_url,
-            "options": {"num_ctx": 4096},
-            "keep_alive": "30m",  # keep model in VRAM so we don't pay cold-load on every query
-        },
+        llm_model_func=_llm_complete,
+        llm_model_name=settings.llm_model,
         embedding_func=EmbeddingFunc(
             embedding_dim=_EMBED_DIM,
             max_token_size=8192,
@@ -111,12 +145,17 @@ def _make_rag(llm_model: str) -> LightRAG:
 
 
 async def query(question: str) -> str:
-    """Fast query path — uses small model for answer generation."""
-    rag = _make_rag(settings.query_llm_model)
+    """Fast query path — DeepSeek Flash answer generation against retrieved chunks."""
+    rag = _make_rag()
     await rag.initialize_storages()
     try:
         result = await rag.aquery(
-            question, param=QueryParam(mode="naive", enable_rerank=False)
+            question,
+            param=QueryParam(
+                mode="naive",
+                enable_rerank=False,
+                user_prompt=_CUSTOMER_SUPPORT_PROMPT,
+            ),
         )
         return result or ""
     finally:
@@ -130,24 +169,31 @@ async def query_with_confidence(question: str) -> QueryResult:
     If nothing clears the configured cosine threshold we skip the LLM entirely
     and signal handoff — saving latency and avoiding ungrounded replies.
     """
-    rag = _make_rag(settings.query_llm_model)
+    rag = _make_rag()
     await rag.initialize_storages()
     try:
-        param = QueryParam(mode="naive", enable_rerank=False)
-        data_result = await rag.aquery_data(question, param=param)
+        probe_param = QueryParam(mode="naive", enable_rerank=False)
+        data_result = await rag.aquery_data(question, param=probe_param)
         chunk_count = _evaluate_retrieval(data_result)
         if chunk_count < settings.rag_min_chunks_for_answer:
             return QueryResult(answer=None, confident=False, chunk_count=chunk_count)
 
-        answer = await rag.aquery(question, param=param)
+        answer = await rag.aquery(
+            question,
+            param=QueryParam(
+                mode="naive",
+                enable_rerank=False,
+                user_prompt=_CUSTOMER_SUPPORT_PROMPT,
+            ),
+        )
         return QueryResult(answer=answer or "", confident=True, chunk_count=chunk_count)
     finally:
         await rag.finalize_storages()
 
 
 async def ingest(text: str) -> None:
-    """Slow ingest path — uses capable model for entity extraction."""
-    rag = _make_rag(settings.ingest_llm_model)
+    """Slow ingest path — entity extraction via DeepSeek Flash."""
+    rag = _make_rag()
     await rag.initialize_storages()
     try:
         await rag.ainsert(text)

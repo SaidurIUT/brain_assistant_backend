@@ -52,13 +52,9 @@ class Settings(BaseSettings):
     celery_task_always_eager: bool = Field(default=False, alias="CELERY_TASK_ALWAYS_EAGER")
     celery_task_eager_propagates: bool = Field(default=False, alias="CELERY_TASK_EAGER_PROPAGATES")
 
-    # LightRAG / Ollama (in-process LightRAG)
+    # Embeddings via Ollama (bge-m3, 1024-dim, multilingual)
     ollama_base_url: str = Field(default="http://10.112.30.10:11434", alias="OLLAMA_BASE_URL")
-    embed_model: str = Field(default="nomic-embed-text:latest", alias="EMBED_MODEL")
-    # Capable model for entity extraction during ingestion (slow, infrequent)
-    ingest_llm_model: str = Field(default="qwen3.5:9b", alias="INGEST_LLM_MODEL")
-    # Tiny fast model for answer generation during queries (~5s response)
-    query_llm_model: str = Field(default="qwen3.5:0.8b", alias="QUERY_LLM_MODEL")
+    embed_model: str = Field(default="bge-m3:latest", alias="EMBED_MODEL")
     lightrag_working_dir: str = Field(default="./lightrag_storage", alias="LIGHTRAG_WORKING_DIR")
     # Cosine similarity floor for retrieval. Chunks below this drop out of the
     # vector search — if none pass, the bot hands off instead of guessing.
