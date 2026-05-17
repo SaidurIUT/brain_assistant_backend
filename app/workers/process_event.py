@@ -155,7 +155,7 @@ def process_chatwoot_event(self, event_id: str) -> None:
             prior_history = [m for m in history if m["content"] != (event.content or "")]
             question = _build_question_with_history(prior_history, event.content or "")
 
-            query_result = sync_query_with_confidence(question)
+            query_result = sync_query_with_confidence(question, connection["company_id"])
             reply = _choose_reply(query_result, _clean_reply)
 
             send_message(
@@ -213,7 +213,11 @@ def process_chatwoot_event(self, event_id: str) -> None:
 def _resolve_connection(db, account_id: int | None, inbox_id: int | None) -> dict | None:
     """
     Find the active Chatwoot connection for this account + inbox.
-    Falls back to env vars for local dev before a connection row is created via the UI.
+
+    The returned dict always carries `company_id` so the bot can scope its RAG
+    queries to the right tenant. Falls back to env vars for local dev — the
+    fallback path requires CHATWOOT_FALLBACK_COMPANY_ID to be set to a real
+    Company UUID, since multi-tenant LightRAG cannot answer without one.
     """
     if account_id is not None and inbox_id is not None:
         conn = db.scalar(
@@ -225,14 +229,20 @@ def _resolve_connection(db, account_id: int | None, inbox_id: int | None) -> dic
         )
         if conn:
             return {
+                "company_id": conn.company_id,
                 "base_url": conn.chatwoot_base_url,
                 "account_id": conn.chatwoot_account_id,
                 "agent_bot_id": conn.chatwoot_agent_bot_id,
                 "agent_bot_token": conn.chatwoot_agent_bot_token or "",
             }
 
-    if settings.chatwoot_base_url and settings.chatwoot_agent_bot_token:
+    if (
+        settings.chatwoot_base_url
+        and settings.chatwoot_agent_bot_token
+        and settings.chatwoot_fallback_company_id
+    ):
         return {
+            "company_id": settings.chatwoot_fallback_company_id,
             "base_url": settings.chatwoot_base_url,
             "account_id": account_id or settings.chatwoot_account_id,
             "agent_bot_id": settings.chatwoot_agent_bot_id,

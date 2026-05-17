@@ -18,8 +18,10 @@ from app.services.jobs import JOB_COMPLETED, JOB_FAILED, JOB_INGESTING, JOB_PROC
 
 def _make_job_and_doc():
     doc_id = uuid4()
+    company_id = uuid4()
     knowledge_document = SimpleNamespace(
         id=doc_id,
+        company_id=company_id,
         status=JOB_PROCESSING,
         extracted_text="",
         char_count=0,
@@ -62,7 +64,7 @@ def test_extraction_feeds_text_into_rag_ingest() -> None:
     with extract, ingest as mock_ingest:
         job_dispatcher.handle_document_text_extraction(db, job)
 
-    mock_ingest.assert_called_once_with("Brain Assistant supports uploads.")
+    mock_ingest.assert_called_once_with("Brain Assistant supports uploads.", doc.company_id)
     assert doc.extracted_text == "Brain Assistant supports uploads."
     assert doc.status == JOB_COMPLETED
     assert job.status == JOB_COMPLETED
@@ -134,7 +136,7 @@ def test_status_transitions_through_ingesting() -> None:
 
     observed_status_at_ingest_time = []
 
-    def capture_status(_text: str) -> None:
+    def capture_status(_text: str, _company_id) -> None:
         observed_status_at_ingest_time.append(doc.status)
 
     extract = patch.object(

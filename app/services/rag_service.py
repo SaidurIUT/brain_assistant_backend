@@ -1,14 +1,16 @@
 """
-LightRAG service — cloud-LLM, in-process orchestration.
+LightRAG service — cloud-LLM, in-process, tenant-scoped.
+
+Each rag_service call takes a company_id (the tenant identity). The UUID is
+stringified and passed as LightRAG's `workspace` so the underlying postgres
+tables (and NetworkX graph files) automatically isolate per-tenant data —
+LightRAG filters every read and write by `WHERE workspace = $1`, so a query
+for tenant A never sees tenant B's chunks.
 
 Query and ingest both go to DeepSeek's OpenAI-compatible Chat Completions API
 (via LightRAG's openai_complete_if_cache). Embeddings use BAAI's bge-m3 served
-locally by Ollama (1024-dim, multilingual). The dual-model split that the old
-codebase used (qwen 9b for ingest, qwen 0.8b for query) is collapsed — DeepSeek
-Flash is capable enough for LightRAG's strict-JSON entity extraction and fast
-enough for per-query answer generation, so a single LLM_MODEL setting covers
-both paths. Bump to a stronger DeepSeek model via env if entity extraction
-quality slips.
+locally by Ollama (1024-dim, multilingual). Bump LLM_MODEL via env if entity
+extraction quality slips.
 """
 
 import asyncio
@@ -17,6 +19,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
+from uuid import UUID
 
 import numpy as np
 import ollama as ollama_client
@@ -96,7 +99,11 @@ async def _llm_complete(
 
 
 def _configure_pg_env() -> None:
-    """Derive POSTGRES_* env vars from DATABASE_URL for LightRAG's ClientManager."""
+    """Derive POSTGRES_* connection env vars from DATABASE_URL for LightRAG's
+    shared connection pool. Note: workspace is NOT set here — we pass it
+    explicitly per call via LightRAG's `workspace=` kwarg so concurrent
+    requests for different tenants can't race on a global value.
+    """
     raw = settings.database_url
     clean = raw.replace("postgresql+psycopg://", "postgresql://").replace(
         "postgresql+asyncpg://", "postgresql://"
@@ -107,7 +114,6 @@ def _configure_pg_env() -> None:
     os.environ.setdefault("POSTGRES_USER", parsed.username or "postgres")
     os.environ.setdefault("POSTGRES_PASSWORD", parsed.password or "")
     os.environ.setdefault("POSTGRES_DATABASE", parsed.path.lstrip("/"))
-    os.environ.setdefault("POSTGRES_WORKSPACE", "brain_assistant")
     os.environ.setdefault("POSTGRES_MAX_CONNECTIONS", "10")
 
 
@@ -122,11 +128,18 @@ async def _embed(texts: list[str]) -> np.ndarray:
     return np.array(response.embeddings)
 
 
-def _make_rag() -> LightRAG:
+def _make_rag(company_id: UUID) -> LightRAG:
+    """Build a LightRAG instance scoped to one tenant.
+
+    The company_id (UUID) is stringified and passed as `workspace=`, which
+    LightRAG uses to filter every storage read/write by `workspace` column —
+    SQL-level tenant isolation with no extra application logic.
+    """
     _configure_pg_env()
     os.makedirs(settings.lightrag_working_dir, exist_ok=True)
     return LightRAG(
         working_dir=settings.lightrag_working_dir,
+        workspace=str(company_id),
         kv_storage="PGKVStorage",
         vector_storage="PGVectorStorage",
         graph_storage="NetworkXStorage",
@@ -144,9 +157,9 @@ def _make_rag() -> LightRAG:
     )
 
 
-async def query(question: str) -> str:
-    """Fast query path — DeepSeek Flash answer generation against retrieved chunks."""
-    rag = _make_rag()
+async def query(question: str, company_id: UUID) -> str:
+    """Fast query path — DeepSeek Flash answer generation against tenant chunks."""
+    rag = _make_rag(company_id)
     await rag.initialize_storages()
     try:
         result = await rag.aquery(
@@ -162,14 +175,15 @@ async def query(question: str) -> str:
         await rag.finalize_storages()
 
 
-async def query_with_confidence(question: str) -> QueryResult:
+async def query_with_confidence(question: str, company_id: UUID) -> QueryResult:
     """Probe retrieval before paying for LLM generation.
 
     aquery_data returns the retrieved chunks without running the answer model.
     If nothing clears the configured cosine threshold we skip the LLM entirely
-    and signal handoff — saving latency and avoiding ungrounded replies.
+    and signal handoff — saving latency and avoiding ungrounded replies. The
+    company_id scopes retrieval to that tenant's chunks only.
     """
-    rag = _make_rag()
+    rag = _make_rag(company_id)
     await rag.initialize_storages()
     try:
         probe_param = QueryParam(mode="naive", enable_rerank=False)
@@ -191,9 +205,9 @@ async def query_with_confidence(question: str) -> QueryResult:
         await rag.finalize_storages()
 
 
-async def ingest(text: str) -> None:
-    """Slow ingest path — entity extraction via DeepSeek Flash."""
-    rag = _make_rag()
+async def ingest(text: str, company_id: UUID) -> None:
+    """Slow ingest path — entity extraction via DeepSeek Flash, scoped to tenant."""
+    rag = _make_rag(company_id)
     await rag.initialize_storages()
     try:
         await rag.ainsert(text)
@@ -201,16 +215,16 @@ async def ingest(text: str) -> None:
         await rag.finalize_storages()
 
 
-def sync_query(question: str) -> str:
+def sync_query(question: str, company_id: UUID) -> str:
     """Blocking wrapper for Celery workers."""
-    return asyncio.run(query(question))
+    return asyncio.run(query(question, company_id))
 
 
-def sync_query_with_confidence(question: str) -> QueryResult:
+def sync_query_with_confidence(question: str, company_id: UUID) -> QueryResult:
     """Blocking wrapper for Celery workers."""
-    return asyncio.run(query_with_confidence(question))
+    return asyncio.run(query_with_confidence(question, company_id))
 
 
-def sync_ingest(text: str) -> None:
+def sync_ingest(text: str, company_id: UUID) -> None:
     """Blocking wrapper for Celery workers."""
-    asyncio.run(ingest(text))
+    asyncio.run(ingest(text, company_id))
