@@ -23,6 +23,65 @@ _HANDOFF_REPLY = (
 _HISTORY_LIMIT = 8
 
 
+_HANDOFF_LABEL_LOW_CONFIDENCE = "low_confidence"
+
+
+def _build_handoff_note(*, customer_message: str, chunk_count: int, threshold: float) -> str:
+    """Pure: render the private-note text the agent will see on handoff.
+
+    Templated rather than LLM-generated — predictable, cheap, no extra
+    round-trip. Easy to upgrade to an LLM summary later if the agent UX
+    calls for richer context.
+    """
+    trimmed = (customer_message or "").strip()
+    if not trimmed:
+        trimmed = "(empty message)"
+    elif len(trimmed) > 400:
+        trimmed = trimmed[:400] + "…"
+    return (
+        "🤖 Bot handed off this conversation.\n\n"
+        f"Customer's last message: {trimmed!r}\n"
+        f"Retrieval: {chunk_count} chunk(s) cleared cosine ≥ {threshold} threshold.\n"
+        "Reason: low confidence — the bot couldn't ground an answer in the knowledge base.\n\n"
+        "Please take it from here."
+    )
+
+
+def _signal_handoff_to_agent(
+    *,
+    connection: dict,
+    event,
+    query_result,
+    set_status,
+    send_note,
+    add_labels,
+) -> None:
+    """Best-effort agent-side signalling on handoff (US-06 T2/T3/T4).
+
+    Three side effects, each individually wrapped so one failure can't cascade:
+      - flip conversation status to 'open' (T2) — gets it into the agent's queue
+      - post a private note with customer context (T3) — gives the agent a head start
+      - add a 'low_confidence' label (T4) — feeds triage + future analytics
+    """
+    common = {
+        "base_url": connection["base_url"],
+        "account_id": connection["account_id"],
+        "conversation_display_id": event.conversation_display_id,
+        "agent_bot_token": connection["agent_bot_token"],
+    }
+    set_status(**common, status="open")
+    send_note(
+        **common,
+        agent_bot_id=connection["agent_bot_id"],
+        content=_build_handoff_note(
+            customer_message=event.content or "",
+            chunk_count=query_result.chunk_count,
+            threshold=settings.rag_retrieval_threshold,
+        ),
+    )
+    add_labels(**common, labels=[_HANDOFF_LABEL_LOW_CONFIDENCE])
+
+
 def _choose_reply(query_result, cleaner) -> str:
     """Pure: map a QueryResult into the customer-facing string.
 
@@ -129,9 +188,12 @@ def process_chatwoot_event(self, event_id: str) -> None:
             return
 
         from app.services.chatwoot_client import (
+            add_conversation_labels,
             fetch_conversation_messages,
             send_message,
+            send_private_note,
             send_typing_status,
+            set_conversation_status,
         )
         from app.services.rag_service import sync_query_with_confidence
 
@@ -166,6 +228,21 @@ def process_chatwoot_event(self, event_id: str) -> None:
                 agent_bot_token=connection["agent_bot_token"],
                 agent_bot_id=connection["agent_bot_id"],
             )
+
+            # When retrieval was empty enough that we handed off, ping the
+            # agent: flip the conversation to Open so it leaves Pending,
+            # post a private note summarising context, and tag with a label
+            # so analytics / triage views can filter handoffs. All three are
+            # best-effort — failures are logged but don't fail the task.
+            if not query_result.confident:
+                _signal_handoff_to_agent(
+                    connection=connection,
+                    event=event,
+                    query_result=query_result,
+                    set_status=set_conversation_status,
+                    send_note=send_private_note,
+                    add_labels=add_conversation_labels,
+                )
 
             event.reply_content = reply
             event.status = "processed"
