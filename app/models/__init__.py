@@ -4,6 +4,7 @@ from app.models.chatwoot import ChatwootConnection, ChatwootEvent
 from app.models.company import BrandSettings, Company, CompanyMember
 from app.models.jobs import BackgroundJob
 from app.models.knowledge import KnowledgeDocument, WebsiteCrawlCandidate, WebsiteCrawlJob
+from app.models.system_prompts import CompanySystemPrompt
 from app.models.uploads import CompanyUpload
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "ChatwootEvent",
     "Company",
     "CompanyMember",
+    "CompanySystemPrompt",
     "CompanyUpload",
     "KnowledgeDocument",
     "WebsiteCrawlCandidate",

@@ -56,10 +56,10 @@ def _evaluate_retrieval(data_result: dict[str, Any] | None) -> int:
 
 _EMBED_DIM = 1024  # bge-m3 output dimension
 
-# Customer-support formatting instructions injected as the user_prompt on every
-# query. Keeps replies clean for a chat widget — direct answer, short
-# paragraphs, no LightRAG-style "### Answer" / "### References" headers leaking
-# through to customers.
+# Built-in default user_prompt used when a tenant hasn't supplied their own
+# via the /api/v1/system-prompt API (US-14). Mirrors
+# app.services.system_prompts.DEFAULT_SYSTEM_PROMPT — they're intentionally
+# the same string so the API can return the exact text the bot would use.
 _CUSTOMER_SUPPORT_PROMPT = """\
 You are a customer support assistant. Reply directly to the customer using ONLY
 the provided context.
@@ -157,9 +157,17 @@ def _make_rag(company_id: UUID) -> LightRAG:
     )
 
 
-async def query(question: str, company_id: UUID) -> str:
-    """Fast query path — DeepSeek Flash answer generation against tenant chunks."""
+async def query(
+    question: str, company_id: UUID, system_prompt_override: str | None = None
+) -> str:
+    """Fast query path — DeepSeek Flash answer generation against tenant chunks.
+
+    If system_prompt_override is provided, it replaces the built-in customer
+    support prompt entirely. Caller is expected to resolve it from the tenant's
+    custom prompt (or None to use the default).
+    """
     rag = _make_rag(company_id)
+    user_prompt = system_prompt_override or _CUSTOMER_SUPPORT_PROMPT
     await rag.initialize_storages()
     try:
         result = await rag.aquery(
@@ -167,7 +175,7 @@ async def query(question: str, company_id: UUID) -> str:
             param=QueryParam(
                 mode="naive",
                 enable_rerank=False,
-                user_prompt=_CUSTOMER_SUPPORT_PROMPT,
+                user_prompt=user_prompt,
             ),
         )
         return result or ""
@@ -175,15 +183,21 @@ async def query(question: str, company_id: UUID) -> str:
         await rag.finalize_storages()
 
 
-async def query_with_confidence(question: str, company_id: UUID) -> QueryResult:
+async def query_with_confidence(
+    question: str, company_id: UUID, system_prompt_override: str | None = None
+) -> QueryResult:
     """Probe retrieval before paying for LLM generation.
 
     aquery_data returns the retrieved chunks without running the answer model.
     If nothing clears the configured cosine threshold we skip the LLM entirely
     and signal handoff — saving latency and avoiding ungrounded replies. The
     company_id scopes retrieval to that tenant's chunks only.
+
+    system_prompt_override lets each tenant customise the bot's voice (US-14);
+    None falls back to the built-in customer-support prompt.
     """
     rag = _make_rag(company_id)
+    user_prompt = system_prompt_override or _CUSTOMER_SUPPORT_PROMPT
     await rag.initialize_storages()
     try:
         probe_param = QueryParam(mode="naive", enable_rerank=False)
@@ -197,7 +211,7 @@ async def query_with_confidence(question: str, company_id: UUID) -> QueryResult:
             param=QueryParam(
                 mode="naive",
                 enable_rerank=False,
-                user_prompt=_CUSTOMER_SUPPORT_PROMPT,
+                user_prompt=user_prompt,
             ),
         )
         return QueryResult(answer=answer or "", confident=True, chunk_count=chunk_count)
@@ -215,14 +229,18 @@ async def ingest(text: str, company_id: UUID) -> None:
         await rag.finalize_storages()
 
 
-def sync_query(question: str, company_id: UUID) -> str:
+def sync_query(
+    question: str, company_id: UUID, system_prompt_override: str | None = None
+) -> str:
     """Blocking wrapper for Celery workers."""
-    return asyncio.run(query(question, company_id))
+    return asyncio.run(query(question, company_id, system_prompt_override))
 
 
-def sync_query_with_confidence(question: str, company_id: UUID) -> QueryResult:
+def sync_query_with_confidence(
+    question: str, company_id: UUID, system_prompt_override: str | None = None
+) -> QueryResult:
     """Blocking wrapper for Celery workers."""
-    return asyncio.run(query_with_confidence(question, company_id))
+    return asyncio.run(query_with_confidence(question, company_id, system_prompt_override))
 
 
 def sync_ingest(text: str, company_id: UUID) -> None:

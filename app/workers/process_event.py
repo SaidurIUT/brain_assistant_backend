@@ -196,6 +196,7 @@ def process_chatwoot_event(self, event_id: str) -> None:
             set_conversation_status,
         )
         from app.services.rag_service import sync_query_with_confidence
+        from app.services.system_prompts import resolve_prompt_content_by_company_id
 
         send_typing_status(
             base_url=connection["base_url"],
@@ -217,7 +218,10 @@ def process_chatwoot_event(self, event_id: str) -> None:
             prior_history = [m for m in history if m["content"] != (event.content or "")]
             question = _build_question_with_history(prior_history, event.content or "")
 
-            query_result = sync_query_with_confidence(question, connection["company_id"])
+            system_prompt = resolve_prompt_content_by_company_id(db, connection["company_id"])
+            query_result = sync_query_with_confidence(
+                question, connection["company_id"], system_prompt
+            )
             reply = _choose_reply(query_result, _clean_reply)
 
             send_message(
