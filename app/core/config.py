@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     redoc_url: str = "/redoc"
     openapi_url: str = "/openapi.json"
     frontend_base_url: str = Field(default="http://localhost:3010", alias="FRONTEND_BASE_URL")
+    backend_public_url: str = Field(default="http://localhost:8010", alias="BACKEND_PUBLIC_URL")
 
     database_url: str = Field(alias="DATABASE_URL")
     secret_key: str = Field(alias="SECRET_KEY", min_length=32)
@@ -46,6 +47,14 @@ class Settings(BaseSettings):
     invitation_expire_days: int = Field(default=7, alias="INVITATION_EXPIRE_DAYS")
     upload_storage_path: str = Field(default="storage/uploads", alias="UPLOAD_STORAGE_PATH")
     upload_max_bytes: int = Field(default=25 * 1024 * 1024, alias="UPLOAD_MAX_BYTES")
+
+    # External knowledge source OAuth and sync
+    google_oauth_client_id: str = Field(default="", alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: str = Field(default="", alias="GOOGLE_OAUTH_CLIENT_SECRET")
+    microsoft_oauth_client_id: str = Field(default="", alias="MICROSOFT_OAUTH_CLIENT_ID")
+    microsoft_oauth_client_secret: str = Field(default="", alias="MICROSOFT_OAUTH_CLIENT_SECRET")
+    microsoft_oauth_tenant: str = Field(default="common", alias="MICROSOFT_OAUTH_TENANT")
+    external_source_sync_interval_hours: int = Field(default=24, alias="EXTERNAL_SOURCE_SYNC_INTERVAL_HOURS")
 
     # Celery / Redis
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")

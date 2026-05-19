@@ -1,5 +1,7 @@
+from datetime import timedelta
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.datetime import utc_now
@@ -8,6 +10,7 @@ from app.models import BackgroundJob, Company, CompanyUpload, KnowledgeDocument,
 DOCUMENT_TEXT_EXTRACTION = "document_text_extraction"
 SINGLE_PAGE_WEB_SCRAPE = "single_page_web_scrape"
 WEBSITE_CRAWL_DISCOVERY = "website_crawl_discovery"
+EXTERNAL_SOURCE_SYNC = "external_source_sync"
 JOB_QUEUED = "queued"
 JOB_PROCESSING = "processing"
 JOB_INGESTING = "ingesting"
@@ -121,6 +124,36 @@ def enqueue_background_job(job_id: UUID):
     from app.jobs.tasks import process_background_job
 
     return process_background_job.delay(str(job_id))
+
+
+def enqueue_stale_queued_jobs(
+    db: Session,
+    *,
+    company_id: UUID | None = None,
+    job_types: tuple[str, ...] | None = None,
+    older_than_seconds: int = 300,
+    limit: int = 25,
+) -> int:
+    cutoff = utc_now() - timedelta(seconds=older_than_seconds)
+    query = select(BackgroundJob).where(
+        BackgroundJob.status == JOB_QUEUED,
+        BackgroundJob.started_at.is_(None),
+        BackgroundJob.attempt_count == 0,
+        BackgroundJob.updated_at < cutoff,
+    )
+    if company_id is not None:
+        query = query.where(BackgroundJob.company_id == company_id)
+    if job_types:
+        query = query.where(BackgroundJob.job_type.in_(job_types))
+    jobs = db.scalars(query.order_by(BackgroundJob.priority.desc(), BackgroundJob.queued_at.asc()).limit(limit)).all()
+
+    queued = 0
+    for job in jobs:
+        task = enqueue_background_job(job.id)
+        job.celery_task_id = task.id or ""
+        job.error_message = ""
+        queued += 1
+    return queued
 
 
 def mark_job_failed(db: Session, job: BackgroundJob, knowledge_document: KnowledgeDocument, message: str) -> None:

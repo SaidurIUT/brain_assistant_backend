@@ -16,6 +16,10 @@ OPENAPI_TAGS = [
         "description": "Account registration, login, sessions, email verification, invitations, and password recovery.",
     },
     {
+        "name": "external-sources",
+        "description": "Google Drive and OneDrive OAuth connections, folder selection, and knowledge sync.",
+    },
+    {
         "name": "settings",
         "description": "Workspace, brand, user profile, member, and role management.",
     },

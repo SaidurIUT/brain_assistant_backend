@@ -3,12 +3,13 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.datetime import utc_now
-from app.models import BackgroundJob, KnowledgeDocument, WebsiteCrawlJob
-from app.services import rag_service
+from app.models import BackgroundJob, ExternalSourceConnection, ExternalSourceSyncRun, KnowledgeDocument, WebsiteCrawlJob
+from app.services import external_sources, rag_service
 from app.services.crawl_discovery import run_website_crawl_discovery
 from app.services.document_extraction import DocumentExtractionError, extract_document_text
 from app.services.jobs import (
     DOCUMENT_TEXT_EXTRACTION,
+    EXTERNAL_SOURCE_SYNC,
     JOB_COMPLETED,
     JOB_FAILED,
     JOB_INGESTING,
@@ -30,7 +31,7 @@ def dispatch_background_job(db: Session, job_id: UUID) -> BackgroundJob | None:
     job.started_at = utc_now()
     job.attempt_count += 1
     job.error_message = ""
-    db.flush()
+    db.commit()
 
     try:
         handler = JOB_HANDLERS[job.job_type]
@@ -59,7 +60,7 @@ def handle_document_text_extraction(db: Session, job: BackgroundJob) -> None:
     knowledge_document.status = JOB_PROCESSING
     knowledge_document.started_at = job.started_at or utc_now()
     knowledge_document.error_message = ""
-    db.flush()
+    db.commit()
 
     result = extract_document_text(
         str(job.payload.get("storage_path") or ""),
@@ -71,7 +72,7 @@ def handle_document_text_extraction(db: Session, job: BackgroundJob) -> None:
     knowledge_document.document_metadata = result.metadata
     knowledge_document.error_message = ""
     knowledge_document.status = JOB_INGESTING
-    db.flush()
+    db.commit()
 
     if result.text.strip():
         rag_service.sync_ingest(result.text, knowledge_document.company_id)
@@ -88,7 +89,7 @@ def handle_document_text_extraction(db: Session, job: BackgroundJob) -> None:
         "char_count": knowledge_document.char_count,
         "metadata": result.metadata,
     }
-    db.flush()
+    db.commit()
 
 
 def handle_single_page_web_scrape(db: Session, job: BackgroundJob) -> None:
@@ -103,7 +104,7 @@ def handle_single_page_web_scrape(db: Session, job: BackgroundJob) -> None:
     knowledge_document.status = JOB_PROCESSING
     knowledge_document.started_at = job.started_at or utc_now()
     knowledge_document.error_message = ""
-    db.flush()
+    db.commit()
 
     result = scrape_single_page(
         str(job.payload.get("url") or ""),
@@ -117,7 +118,7 @@ def handle_single_page_web_scrape(db: Session, job: BackgroundJob) -> None:
     knowledge_document.document_metadata = result.metadata
     knowledge_document.error_message = ""
     knowledge_document.status = JOB_INGESTING
-    db.flush()
+    db.commit()
 
     if result.text.strip():
         rag_service.sync_ingest(result.text, knowledge_document.company_id)
@@ -134,7 +135,7 @@ def handle_single_page_web_scrape(db: Session, job: BackgroundJob) -> None:
         "char_count": knowledge_document.char_count,
         "metadata": result.metadata,
     }
-    db.flush()
+    db.commit()
 
 
 def handle_website_crawl_discovery(db: Session, job: BackgroundJob) -> None:
@@ -159,6 +160,41 @@ def handle_website_crawl_discovery(db: Session, job: BackgroundJob) -> None:
         "crawl_job_id": str(crawl_job.id),
         "total_discovered": crawl_job.total_discovered,
         "total_matched": crawl_job.total_matched,
+    }
+    db.flush()
+
+
+def handle_external_source_sync(db: Session, job: BackgroundJob) -> None:
+    connection_id = job.payload.get("connection_id")
+    sync_run_id = job.payload.get("sync_run_id")
+    if not connection_id or not sync_run_id:
+        raise ValueError("Missing external source sync identifiers")
+
+    sync_run = db.get(ExternalSourceSyncRun, UUID(str(sync_run_id)))
+    connection = db.get(ExternalSourceConnection, UUID(str(connection_id)))
+    if sync_run is None:
+        raise ValueError("External source sync run not found")
+
+    try:
+        external_sources.run_external_source_sync(
+            db,
+            connection_id=UUID(str(connection_id)),
+            sync_run_id=UUID(str(sync_run_id)),
+        )
+    except Exception as exc:
+        message = str(exc) or exc.__class__.__name__
+        external_sources.fail_sync_run(db, sync_run=sync_run, connection=connection, message=message[:1000])
+        raise
+
+    job.status = JOB_COMPLETED
+    job.completed_at = sync_run.completed_at or utc_now()
+    job.error_message = ""
+    job.result = {
+        "connection_id": str(connection_id),
+        "sync_run_id": str(sync_run_id),
+        "total_seen": sync_run.total_seen,
+        "total_synced": sync_run.total_synced,
+        "total_failed": sync_run.total_failed,
     }
     db.flush()
 
@@ -188,10 +224,18 @@ def fail_job(db: Session, job: BackgroundJob, message: str) -> None:
             crawl_job.status = JOB_FAILED
             crawl_job.error_message = message
             crawl_job.completed_at = now
+    elif job.job_type == EXTERNAL_SOURCE_SYNC:
+        sync_run_id = job.payload.get("sync_run_id")
+        connection_id = job.payload.get("connection_id")
+        sync_run = db.get(ExternalSourceSyncRun, UUID(str(sync_run_id))) if sync_run_id else None
+        connection = db.get(ExternalSourceConnection, UUID(str(connection_id))) if connection_id else None
+        if sync_run is not None:
+            external_sources.fail_sync_run(db, sync_run=sync_run, connection=connection, message=message)
 
 
 JOB_HANDLERS = {
     DOCUMENT_TEXT_EXTRACTION: handle_document_text_extraction,
+    EXTERNAL_SOURCE_SYNC: handle_external_source_sync,
     SINGLE_PAGE_WEB_SCRAPE: handle_single_page_web_scrape,
     WEBSITE_CRAWL_DISCOVERY: handle_website_crawl_discovery,
 }

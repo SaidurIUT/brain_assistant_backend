@@ -50,6 +50,10 @@ class Company(Base, TimestampMixin):
         "KnowledgeDocument",
         back_populates="company", cascade="all, delete-orphan"
     )
+    external_source_connections: Mapped[list["ExternalSourceConnection"]] = relationship(
+        "ExternalSourceConnection",
+        back_populates="company", cascade="all, delete-orphan"
+    )
 
 
 class BrandSettings(Base, TimestampMixin):

@@ -26,6 +26,7 @@ services:
     environment:
       ENVIRONMENT: development
       FRONTEND_BASE_URL: http://localhost:3010
+      BACKEND_PUBLIC_URL: http://localhost:8010
       DATABASE_URL: postgresql+psycopg://brain_backend:brain_backend_dev_password@brain-assistant-db:5432/brain_assistant_backend
       SECRET_KEY: dev-only-change-before-production-64-character-secret-key-for-local-auth
       BACKEND_CORS_ORIGINS: http://localhost:3010,http://127.0.0.1:3010
@@ -47,9 +48,17 @@ services:
       INVITATION_EXPIRE_DAYS: 7
       UPLOAD_STORAGE_PATH: /app/storage/uploads
       UPLOAD_MAX_BYTES: 26214400
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID:-}
+      MICROSOFT_OAUTH_CLIENT_SECRET: ${MICROSOFT_OAUTH_CLIENT_SECRET:-}
+      MICROSOFT_OAUTH_TENANT: ${MICROSOFT_OAUTH_TENANT:-common}
+      EXTERNAL_SOURCE_SYNC_INTERVAL_HOURS: ${EXTERNAL_SOURCE_SYNC_INTERVAL_HOURS:-24}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://10.112.30.10:11434}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3:latest}
       REDIS_URL: redis://brain-assistant-redis:6379/0
     ports:
       - "8010:8010"
@@ -73,6 +82,7 @@ services:
     environment:
       ENVIRONMENT: development
       FRONTEND_BASE_URL: http://localhost:3010
+      BACKEND_PUBLIC_URL: http://localhost:8010
       DATABASE_URL: postgresql+psycopg://brain_backend:brain_backend_dev_password@brain-assistant-db:5432/brain_assistant_backend
       SECRET_KEY: dev-only-change-before-production-64-character-secret-key-for-local-auth
       BACKEND_CORS_ORIGINS: http://localhost:3010,http://127.0.0.1:3010
@@ -94,9 +104,17 @@ services:
       INVITATION_EXPIRE_DAYS: 7
       UPLOAD_STORAGE_PATH: /app/storage/uploads
       UPLOAD_MAX_BYTES: 26214400
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID:-}
+      MICROSOFT_OAUTH_CLIENT_SECRET: ${MICROSOFT_OAUTH_CLIENT_SECRET:-}
+      MICROSOFT_OAUTH_TENANT: ${MICROSOFT_OAUTH_TENANT:-common}
+      EXTERNAL_SOURCE_SYNC_INTERVAL_HOURS: ${EXTERNAL_SOURCE_SYNC_INTERVAL_HOURS:-24}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://10.112.30.10:11434}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3:latest}
       REDIS_URL: redis://brain-assistant-redis:6379/0
     volumes:
       - ./storage/uploads:/app/storage/uploads:ro
@@ -111,6 +129,41 @@ services:
       --concurrency=1
       --prefetch-multiplier=1
       -Q brain-jobs
+
+  brain-beat:
+    build:
+      context: .
+      target: worker
+    environment:
+      ENVIRONMENT: development
+      FRONTEND_BASE_URL: http://localhost:3010
+      BACKEND_PUBLIC_URL: http://localhost:8010
+      DATABASE_URL: postgresql+psycopg://brain_backend:brain_backend_dev_password@brain-assistant-db:5432/brain_assistant_backend
+      SECRET_KEY: dev-only-change-before-production-64-character-secret-key-for-local-auth
+      BACKEND_CORS_ORIGINS: http://localhost:3010,http://127.0.0.1:3010
+      AUTH_COOKIE_SECURE: "false"
+      UPLOAD_STORAGE_PATH: /app/storage/uploads
+      UPLOAD_MAX_BYTES: 26214400
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID:-}
+      MICROSOFT_OAUTH_CLIENT_SECRET: ${MICROSOFT_OAUTH_CLIENT_SECRET:-}
+      MICROSOFT_OAUTH_TENANT: ${MICROSOFT_OAUTH_TENANT:-common}
+      EXTERNAL_SOURCE_SYNC_INTERVAL_HOURS: ${EXTERNAL_SOURCE_SYNC_INTERVAL_HOURS:-24}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://10.112.30.10:11434}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3:latest}
+      REDIS_URL: redis://brain-assistant-redis:6379/0
+    depends_on:
+      brain-assistant-db:
+        condition: service_healthy
+      brain-assistant-redis:
+        condition: service_started
+    command: >
+      celery -A app.jobs.celery_app:celery_app beat
+      --loglevel=info
 
   brain-assistant-mailhog:
     image: mailhog/mailhog:v1.0.1

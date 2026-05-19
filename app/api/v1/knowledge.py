@@ -33,9 +33,11 @@ from app.services.crawl_discovery import (
 from app.services import rag_service
 from app.services.auth import audit_event
 from app.services.jobs import (
+    SINGLE_PAGE_WEB_SCRAPE,
     create_single_page_web_scrape_job,
     create_website_crawl_discovery_job,
     enqueue_background_job,
+    enqueue_stale_queued_jobs,
     mark_job_failed,
 )
 from app.services.settings import current_company, require_company_admin
@@ -293,6 +295,8 @@ def list_web_pages(
     current_user: User = Depends(get_current_user),
 ) -> list[KnowledgeSourcePublic]:
     company = current_company(db, current_user, company_id)
+    if enqueue_stale_queued_jobs(db, company_id=company.id, job_types=(SINGLE_PAGE_WEB_SCRAPE,)):
+        db.commit()
     records = db.scalars(
         select(KnowledgeDocument)
         .where(KnowledgeDocument.company_id == company.id, KnowledgeDocument.source_type == "web_page")
