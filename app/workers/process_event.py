@@ -26,25 +26,30 @@ _HISTORY_LIMIT = 8
 _HANDOFF_LABEL_LOW_CONFIDENCE = "low_confidence"
 
 
-def _build_handoff_note(*, customer_message: str, chunk_count: int, threshold: float) -> str:
+def _build_handoff_note(
+    *, summary: str, customer_message: str, chunk_count: int, threshold: float
+) -> str:
     """Pure: render the private-note text the agent will see on handoff.
 
-    Templated rather than LLM-generated — predictable, cheap, no extra
-    round-trip. Easy to upgrade to an LLM summary later if the agent UX
-    calls for richer context.
+    Uses the LLM-generated summary (US-06 T5) when available; falls back to
+    the template when summary is empty (LLM call failed or no history).
     """
     trimmed = (customer_message or "").strip()
     if not trimmed:
         trimmed = "(empty message)"
     elif len(trimmed) > 400:
         trimmed = trimmed[:400] + "…"
-    return (
-        "🤖 Bot handed off this conversation.\n\n"
-        f"Customer's last message: {trimmed!r}\n"
-        f"Retrieval: {chunk_count} chunk(s) cleared cosine ≥ {threshold} threshold.\n"
-        "Reason: low confidence — the bot couldn't ground an answer in the knowledge base.\n\n"
-        "Please take it from here."
-    )
+
+    if summary.strip():
+        body = summary
+    else:
+        body = (
+            f"Customer's last message: {trimmed!r}\n"
+            f"Retrieval: {chunk_count} chunk(s) cleared cosine ≥ {threshold} threshold.\n"
+            "Reason: low confidence — the bot couldn't ground an answer in the knowledge base."
+        )
+
+    return "🤖 Bot handed off this conversation.\n\n" + body + "\n\nPlease take it from here."
 
 
 def _signal_handoff_to_agent(
@@ -52,6 +57,7 @@ def _signal_handoff_to_agent(
     connection: dict,
     event,
     query_result,
+    handoff_summary: str,
     set_status,
     send_note,
     add_labels,
@@ -74,6 +80,7 @@ def _signal_handoff_to_agent(
         **common,
         agent_bot_id=connection["agent_bot_id"],
         content=_build_handoff_note(
+            summary=handoff_summary,
             customer_message=event.content or "",
             chunk_count=query_result.chunk_count,
             threshold=settings.rag_retrieval_threshold,
@@ -195,7 +202,7 @@ def process_chatwoot_event(self, event_id: str) -> None:
             send_typing_status,
             set_conversation_status,
         )
-        from app.services.rag_service import sync_query_with_confidence
+        from app.services.rag_service import sync_query_with_confidence, sync_summarise_for_handoff
         from app.services.system_prompts import resolve_prompt_content_by_company_id
 
         send_typing_status(
@@ -239,10 +246,14 @@ def process_chatwoot_event(self, event_id: str) -> None:
             # so analytics / triage views can filter handoffs. All three are
             # best-effort — failures are logged but don't fail the task.
             if not query_result.confident:
+                handoff_summary = sync_summarise_for_handoff(
+                    prior_history, event.content or ""
+                )
                 _signal_handoff_to_agent(
                     connection=connection,
                     event=event,
                     query_result=query_result,
+                    handoff_summary=handoff_summary,
                     set_status=set_conversation_status,
                     send_note=send_private_note,
                     add_labels=add_conversation_labels,

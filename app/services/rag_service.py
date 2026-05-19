@@ -229,6 +229,39 @@ async def ingest(text: str, company_id: UUID) -> None:
         await rag.finalize_storages()
 
 
+_HANDOFF_SUMMARY_SYSTEM_PROMPT = """\
+You are writing a brief handoff note for a human customer support agent.
+The AI bot could not find a relevant answer for the customer.
+
+Summarise in 2-3 sentences what the customer needs help with, based only
+on the conversation below. Be factual and concise. Write in third person
+(e.g. "The customer is asking about...").
+Do not mention "knowledge base", "AI", or "bot"."""
+
+
+async def summarise_for_handoff(history: list[dict], customer_message: str) -> str:
+    """Generate an LLM summary of the conversation for the agent's private note.
+
+    Returns empty string on any failure so the caller can fall back to the
+    template note without the agent ever seeing an error.
+    """
+    turns = []
+    for msg in history:
+        speaker = "Customer" if msg["sender"] == "contact" else "Assistant"
+        turns.append(f"{speaker}: {msg['content']}")
+    turns.append(f"Customer: {customer_message}")
+
+    try:
+        result = await _llm_complete(
+            "\n".join(turns),
+            system_prompt=_HANDOFF_SUMMARY_SYSTEM_PROMPT,
+        )
+        return (result or "").strip()
+    except Exception:
+        logger.warning("summarise_for_handoff: LLM call failed, falling back to template")
+        return ""
+
+
 def sync_query(
     question: str, company_id: UUID, system_prompt_override: str | None = None
 ) -> str:
@@ -241,6 +274,11 @@ def sync_query_with_confidence(
 ) -> QueryResult:
     """Blocking wrapper for Celery workers."""
     return asyncio.run(query_with_confidence(question, company_id, system_prompt_override))
+
+
+def sync_summarise_for_handoff(history: list[dict], customer_message: str) -> str:
+    """Blocking wrapper for Celery workers."""
+    return asyncio.run(summarise_for_handoff(history, customer_message))
 
 
 def sync_ingest(text: str, company_id: UUID) -> None:
