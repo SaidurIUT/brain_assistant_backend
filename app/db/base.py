@@ -6,6 +6,11 @@ from app.models import (
     ChatwootConnection,
     ChatwootEvent,
     CompanyUpload,
+    ExternalSourceConnection,
+    ExternalSourceFolder,
+    ExternalSourceItem,
+    ExternalSourceOAuthState,
+    ExternalSourceSyncRun,
     KnowledgeDocument,
     User,
 )
@@ -18,6 +23,11 @@ __all__ = [
     "ChatwootConnection",
     "ChatwootEvent",
     "CompanyUpload",
+    "ExternalSourceConnection",
+    "ExternalSourceFolder",
+    "ExternalSourceItem",
+    "ExternalSourceOAuthState",
+    "ExternalSourceSyncRun",
     "KnowledgeDocument",
     "User",
 ]

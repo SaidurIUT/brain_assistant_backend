@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -16,4 +17,14 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_always_eager=settings.celery_task_always_eager,
     task_eager_propagates=settings.celery_task_eager_propagates,
+    beat_schedule={
+        "enqueue-due-external-source-syncs": {
+            "task": "jobs.enqueue_due_external_source_syncs",
+            "schedule": crontab(minute="*/15"),
+        },
+        "enqueue-stale-queued-jobs": {
+            "task": "jobs.enqueue_stale_queued_jobs",
+            "schedule": crontab(minute="*/2"),
+        },
+    },
 )

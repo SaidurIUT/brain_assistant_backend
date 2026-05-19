@@ -250,6 +250,28 @@ async def ingest(text: str, company_id: UUID) -> None:
         await rag.finalize_storages()
 
 
+async def ingest_document(text: str, company_id: UUID, *, doc_id: str, file_path: str) -> None:
+    """Insert or reinsert one source document with a deterministic LightRAG id."""
+    rag = _make_rag(company_id)
+    await rag.initialize_storages()
+    try:
+        await rag.ainsert(text, ids=doc_id, file_paths=file_path)
+    finally:
+        await rag.finalize_storages()
+
+
+async def delete_document(doc_id: str, company_id: UUID) -> None:
+    """Delete one deterministic document id from LightRAG, ignoring not-found results."""
+    rag = _make_rag(company_id)
+    await rag.initialize_storages()
+    try:
+        result = await rag.adelete_by_doc_id(doc_id)
+        if getattr(result, "status", "") not in {"success", "not_found"}:
+            logger.warning("LightRAG delete returned %s for %s", getattr(result, "status", ""), doc_id)
+    finally:
+        await rag.finalize_storages()
+
+
 _HANDOFF_SUMMARY_SYSTEM_PROMPT = """\
 You are writing a brief handoff note for a human customer support agent.
 The AI bot could not find a relevant answer for the customer.
@@ -305,3 +327,13 @@ def sync_summarise_for_handoff(history: list[dict], customer_message: str) -> st
 def sync_ingest(text: str, company_id: UUID) -> None:
     """Blocking wrapper for Celery workers."""
     asyncio.run(ingest(text, company_id))
+
+
+def sync_ingest_document(text: str, company_id: UUID, *, doc_id: str, file_path: str) -> None:
+    """Blocking wrapper for deterministic source-document ingest."""
+    asyncio.run(ingest_document(text, company_id, doc_id=doc_id, file_path=file_path))
+
+
+def sync_delete_document(doc_id: str, company_id: UUID) -> None:
+    """Blocking wrapper for deterministic source-document deletion."""
+    asyncio.run(delete_document(doc_id, company_id))

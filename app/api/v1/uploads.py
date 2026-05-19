@@ -10,7 +10,13 @@ from app.models import User
 from app.schemas.auth import MessageResponse
 from app.schemas.uploads import DocumentExtractionPublic, DocumentExtractionUpdateRequest, UploadPublic
 from app.services.auth import audit_event
-from app.services.jobs import create_document_extraction_job, enqueue_background_job, mark_job_failed
+from app.services.jobs import (
+    DOCUMENT_TEXT_EXTRACTION,
+    create_document_extraction_job,
+    enqueue_background_job,
+    enqueue_stale_queued_jobs,
+    mark_job_failed,
+)
 from app.services.settings import current_company, require_company_admin
 from app.services.uploads import delete_upload, get_upload_for_company, list_uploads, save_upload
 
@@ -49,6 +55,8 @@ def list_documents(
     current_user: User = Depends(get_current_user),
 ) -> list[UploadPublic]:
     company = current_company(db, current_user, company_id)
+    if enqueue_stale_queued_jobs(db, company_id=company.id, job_types=(DOCUMENT_TEXT_EXTRACTION,)):
+        db.commit()
     return [upload_public(record) for record in list_uploads(db, company, "documents")]
 
 
