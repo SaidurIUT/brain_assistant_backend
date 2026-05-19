@@ -1,6 +1,9 @@
 """
 Extracts a flat, stable set of fields from a raw Chatwoot AgentBot webhook payload.
 
+Note: Chatwoot stores message content as HTML (e.g. "<p>Hello</p>"). All content
+fields are stripped to plain text here so nothing downstream ever sees raw HTML.
+
 Chatwoot sends two structurally different payload shapes depending on event type:
 
 MESSAGE EVENTS  (message_created, message_updated)
@@ -19,6 +22,9 @@ CONVERSATION EVENTS  (conversation_updated, conversation_status_changed,
     payload["contact_inbox"]["account"]["id"] → account id
     payload["meta"]["sender"]["type"]  → sender type
 """
+
+import html as _html
+import re as _re
 
 _MESSAGE_EVENTS = frozenset({"message_created", "message_updated"})
 _CONVERSATION_EVENTS = frozenset({
@@ -50,7 +56,7 @@ def _from_message(payload: dict) -> dict:
         "message_id": payload.get("id"),
         "message_type": message_type,
         "sender_type": sender_type,
-        "content": payload.get("content"),
+        "content": _strip_html(payload.get("content")),
     }
 
 
@@ -74,7 +80,7 @@ def _generic(payload: dict) -> dict:
         "message_id": None,
         "message_type": None,
         "sender_type": _dig(payload, "sender", "type"),
-        "content": payload.get("content"),
+        "content": _strip_html(payload.get("content")),
     }
 
 
@@ -84,3 +90,11 @@ def _dig(d: dict, *keys):
             return None
         d = d.get(key)
     return d
+
+
+def _strip_html(text: str | None) -> str | None:
+    if not text:
+        return text
+    plain = _re.sub(r"<[^>]+>", "", text)
+    plain = _html.unescape(plain).strip()
+    return plain or None
