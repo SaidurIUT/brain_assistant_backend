@@ -16,6 +16,7 @@ extraction quality slips.
 import asyncio
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
@@ -44,6 +45,23 @@ class QueryResult:
     answer: str | None
     confident: bool
     chunk_count: int
+
+
+_INSUFFICIENT_ANSWER_RE = re.compile(
+    r"don.t have enough|no (relevant )?information|cannot (find|answer|provide)|"
+    r"not (enough|sufficient|covered)|unable to (find|answer|provide)|"
+    r"no relevant (content|context|data)",
+    re.IGNORECASE,
+)
+
+
+def _is_insufficient_answer(answer: str) -> bool:
+    """True when the LLM signals it couldn't answer from the retrieved context.
+
+    The length guard (<250 chars) prevents false positives when the LLM
+    mentions a gap mid-answer as part of a real, substantive reply.
+    """
+    return bool(_INSUFFICIENT_ANSWER_RE.search(answer)) and len(answer.strip()) < 250
 
 
 def _evaluate_retrieval(data_result: dict[str, Any] | None) -> int:
@@ -214,7 +232,10 @@ async def query_with_confidence(
                 user_prompt=user_prompt,
             ),
         )
-        return QueryResult(answer=answer or "", confident=True, chunk_count=chunk_count)
+        answer = answer or ""
+        if _is_insufficient_answer(answer):
+            return QueryResult(answer=None, confident=False, chunk_count=chunk_count)
+        return QueryResult(answer=answer, confident=True, chunk_count=chunk_count)
     finally:
         await rag.finalize_storages()
 
