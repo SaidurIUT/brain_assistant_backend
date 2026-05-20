@@ -1,6 +1,8 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
+from app.api.v1.external_sources import item_public
 from app.services import external_sources
 from app.services.external_provider_clients import ProviderFile
 
@@ -94,3 +96,36 @@ def test_external_rag_doc_id_is_stable() -> None:
     item = SimpleNamespace(connection_id=connection_id, drive_id="drive", provider_file_id="file")
 
     assert external_sources.external_rag_doc_id(item) == f"external:{connection_id}:drive:file"
+
+
+def test_item_public_includes_extraction_metadata() -> None:
+    now = datetime.now(UTC)
+    knowledge_document_id = uuid4()
+    item = SimpleNamespace(
+        id=uuid4(),
+        connection_id=uuid4(),
+        knowledge_document_id=knowledge_document_id,
+        provider_file_id="file",
+        drive_id="drive",
+        name="runbook.md",
+        mime_type="text/markdown",
+        web_url="https://drive.example/runbook",
+        checksum="",
+        etag="etag",
+        modified_at=None,
+        size_bytes=512,
+        status="synced",
+        last_synced_at=now,
+        last_seen_at=now,
+        error_message="",
+        created_at=now,
+        updated_at=now,
+        knowledge_document=SimpleNamespace(status="completed", char_count=42, error_message=""),
+    )
+
+    public = item_public(item)
+
+    assert public.knowledge_document_id == knowledge_document_id
+    assert public.extraction_status == "completed"
+    assert public.extracted_char_count == 42
+    assert public.extraction_error == ""

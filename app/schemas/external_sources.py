@@ -95,6 +95,7 @@ class ExternalSourceItemPublic(BaseModel):
 
     id: UUID
     connection_id: UUID
+    knowledge_document_id: UUID | None = None
     provider_file_id: str
     drive_id: str
     name: str
@@ -108,5 +109,8 @@ class ExternalSourceItemPublic(BaseModel):
     last_synced_at: datetime | None
     last_seen_at: datetime | None
     error_message: str
+    extraction_status: str | None = None
+    extracted_char_count: int | None = None
+    extraction_error: str | None = None
     created_at: datetime
     updated_at: datetime

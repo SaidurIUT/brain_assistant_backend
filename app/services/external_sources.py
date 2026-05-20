@@ -418,6 +418,7 @@ def list_items(db: Session, *, connection: ExternalSourceConnection) -> list[Ext
     return list(
         db.scalars(
             select(ExternalSourceItem)
+            .options(selectinload(ExternalSourceItem.knowledge_document))
             .where(ExternalSourceItem.connection_id == connection.id)
             .order_by(ExternalSourceItem.updated_at.desc())
         )
