@@ -202,24 +202,25 @@ async def query(
 
 
 async def query_with_confidence(
-    question: str, company_id: UUID, system_prompt_override: str | None = None
+    question: str,
+    company_id: UUID,
+    system_prompt_override: str | None = None,
+    search_query: str | None = None,
 ) -> QueryResult:
     """Probe retrieval before paying for LLM generation.
 
-    aquery_data returns the retrieved chunks without running the answer model.
-    If nothing clears the configured cosine threshold we skip the LLM entirely
-    and signal handoff — saving latency and avoiding ungrounded replies. The
-    company_id scopes retrieval to that tenant's chunks only.
-
-    system_prompt_override lets each tenant customise the bot's voice (US-14);
-    None falls back to the built-in customer-support prompt.
+    search_query is used for the vector search step only — pass the bare
+    customer message here so conversation history doesn't dilute the embedding.
+    question (which may include history) is used for LLM answer generation.
+    Falls back to question if search_query is not provided.
     """
     rag = _make_rag(company_id)
     user_prompt = system_prompt_override or _CUSTOMER_SUPPORT_PROMPT
+    retrieval_query = search_query or question
     await rag.initialize_storages()
     try:
         probe_param = QueryParam(mode="naive", enable_rerank=False)
-        data_result = await rag.aquery_data(question, param=probe_param)
+        data_result = await rag.aquery_data(retrieval_query, param=probe_param)
         chunk_count = _evaluate_retrieval(data_result)
         if chunk_count < settings.rag_min_chunks_for_answer:
             return QueryResult(answer=None, confident=False, chunk_count=chunk_count)
@@ -313,10 +314,13 @@ def sync_query(
 
 
 def sync_query_with_confidence(
-    question: str, company_id: UUID, system_prompt_override: str | None = None
+    question: str,
+    company_id: UUID,
+    system_prompt_override: str | None = None,
+    search_query: str | None = None,
 ) -> QueryResult:
     """Blocking wrapper for Celery workers."""
-    return asyncio.run(query_with_confidence(question, company_id, system_prompt_override))
+    return asyncio.run(query_with_confidence(question, company_id, system_prompt_override, search_query))
 
 
 def sync_summarise_for_handoff(history: list[dict], customer_message: str) -> str:
