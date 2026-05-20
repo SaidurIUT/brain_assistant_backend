@@ -35,9 +35,11 @@ services:
       AUTH_COOKIE_SECURE: "false"
       AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
       KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-http://localhost:8080}
+      KEYCLOAK_INTERNAL_BASE_URL: ${KEYCLOAK_INTERNAL_BASE_URL:-}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brain-assistant}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-brain-assistant-onboarding}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-}
+      KEYCLOAK_REQUIRE_VERIFIED_EMAIL: ${KEYCLOAK_REQUIRE_VERIFIED_EMAIL:-false}
       MAIL_MODE: dev
       MAIL_FROM: Brain Assistant <no-reply@brainassistant.local>
       SMTP_HOST: brain-assistant-mailhog
@@ -91,9 +93,11 @@ services:
       AUTH_COOKIE_SECURE: "false"
       AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
       KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-http://localhost:8080}
+      KEYCLOAK_INTERNAL_BASE_URL: ${KEYCLOAK_INTERNAL_BASE_URL:-}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brain-assistant}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-brain-assistant-onboarding}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-}
+      KEYCLOAK_REQUIRE_VERIFIED_EMAIL: ${KEYCLOAK_REQUIRE_VERIFIED_EMAIL:-false}
       MAIL_MODE: dev
       MAIL_FROM: Brain Assistant <no-reply@brainassistant.local>
       SMTP_HOST: brain-assistant-mailhog
@@ -178,5 +182,24 @@ services:
     ports:
       - "56379:6379"
 
+  brain-assistant-keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: brain-assistant-keycloak
+    command:
+      - start-dev
+      - --import-realm
+      - --hostname=http://localhost:8080
+      - --hostname-strict=false
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/brain-assistant-realm.json:/opt/keycloak/data/import/brain-assistant-realm.json:ro
+      - brain_assistant_keycloak_data:/opt/keycloak/data
+
 volumes:
   brain_assistant_backend_pg_data:
+  brain_assistant_keycloak_data:

@@ -25,12 +25,11 @@ def get_current_user(
             detail="Missing access token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if settings.auth_provider == "keycloak":
-        return user_from_keycloak_token(db, credentials.credentials, request)
-
     try:
         payload = decode_access_token(credentials.credentials)
     except jwt.PyJWTError as exc:
+        if settings.auth_provider == "keycloak":
+            return user_from_keycloak_token(db, credentials.credentials, request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token",

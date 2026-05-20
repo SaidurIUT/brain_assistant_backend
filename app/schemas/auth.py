@@ -83,6 +83,12 @@ class LogoutRequest(BaseModel):
     refresh_token: str | None = Field(default=None, min_length=32, max_length=512)
 
 
+class KeycloakExchangeRequest(BaseModel):
+    code: str = Field(min_length=16, max_length=4096)
+    code_verifier: str = Field(min_length=43, max_length=128)
+    redirect_uri: str = Field(min_length=8, max_length=1000)
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=8, max_length=256)
@@ -124,6 +130,18 @@ class TokenResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class AuthWorkspacePublic(BaseModel):
+    id: UUID
+    name: str
+    role: str
+    status: str
+
+
+class AuthContextPublic(BaseModel):
+    user: UserPublic
+    workspaces: list[AuthWorkspacePublic]
 
 
 def validate_password_strength(password: str) -> None:

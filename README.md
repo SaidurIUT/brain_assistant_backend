@@ -42,6 +42,11 @@ AUTH_PROVIDER=keycloak
 KEYCLOAK_BASE_URL=http://localhost:8080
 KEYCLOAK_REALM=brain-assistant
 KEYCLOAK_CLIENT_ID=brain-assistant-onboarding
+# Internal URL used by backend containers for token exchange and JWKS.
+# Keep KEYCLOAK_BASE_URL as the browser-facing issuer URL.
+KEYCLOAK_INTERNAL_BASE_URL=http://brain-assistant-keycloak:8080
+# Local dev default. Set true only after Keycloak SMTP + Verify Email are configured.
+KEYCLOAK_REQUIRE_VERIFIED_EMAIL=false
 ```
 
 In `onboarding-web/.env`, set:
@@ -53,7 +58,31 @@ NEXT_PUBLIC_KEYCLOAK_REALM=brain-assistant
 NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=brain-assistant-onboarding
 ```
 
-Configure the Keycloak client as a public OIDC client with standard authorization code flow, PKCE, web origin `http://localhost:3010`, and redirect URI `http://localhost:3010/auth/keycloak/callback`.
+`docker compose up` starts a local Keycloak service on http://localhost:8080
+and imports `keycloak/brain-assistant-realm.json`. The imported client is a
+public OIDC client with standard authorization code flow, PKCE, web origin
+`http://localhost:3010`, redirect URI
+`http://localhost:3010/auth/keycloak/callback`, and user self-registration
+enabled.
+
+Keycloak admin console for local development:
+
+- URL: http://localhost:8080/admin
+- Username: `admin`
+- Password: `admin`
+
+In Keycloak mode, the browser redirects to Keycloak for identity provider login
+and posts the authorization code back to `POST /api/v1/auth/keycloak/exchange`.
+The backend exchanges the code, provisions the local Brain Assistant user, and
+then issues the normal Brain Assistant access token plus HttpOnly refresh cookie.
+The frontend does not store Keycloak refresh tokens.
+Email verification in Keycloak mode is owned by Keycloak, not the backend email
+token flow. The imported local realm has `verifyEmail=false`, so the app trusts
+authenticated Keycloak users by default. For production, configure SMTP in
+Keycloak, enable realm email verification, and set
+`KEYCLOAK_REQUIRE_VERIFIED_EMAIL=true`; then the backend honors Keycloak's
+`email_verified` claim and keeps team invitations locked until Keycloak marks
+the email verified.
 
 Scale extraction workers up to the local maximum of five when processing many Knowledge Base uploads:
 
@@ -90,6 +119,8 @@ REDIS_URL=redis://localhost:56379/0 python -m celery -A app.jobs.celery_app:cele
 
 ## Auth Flow
 
+Local auth mode:
+
 - Register with any valid email address.
 - Registration creates a default company workspace, administrator membership, and brand settings record, then sends an email verification link.
 - Users can continue onboarding before verification, but member invitations are blocked until email verification is completed.
@@ -99,6 +130,14 @@ REDIS_URL=redis://localhost:56379/0 python -m celery -A app.jobs.celery_app:cele
 - Logout revokes the current refresh session.
 - Logout-all revokes every active session for the user.
 - Administrators invite members from settings; invited people receive an email and set their first password through `POST /api/v1/auth/accept-invitation`.
+
+Keycloak auth mode:
+
+- Registration and login happen on Keycloak.
+- The frontend sends the authorization code to the backend.
+- The backend validates the Keycloak identity token, provisions or updates the local app user, and issues the normal Brain Assistant session.
+- The backend does not send a Mailhog verification email for Keycloak registrations.
+- Email verification is trusted by default for local Keycloak dev, or enforced from Keycloak's `email_verified` claim when `KEYCLOAK_REQUIRE_VERIFIED_EMAIL=true`.
 
 ## Chatbot Pipeline
 

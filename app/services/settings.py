@@ -19,12 +19,9 @@ def create_default_workspace(db: Session, user: User) -> Company:
     company = Company(created_by_user_id=user.id)
     db.add(company)
     db.flush()
-    db.add(
-        BrandSettings(
-            company_id=company.id,
-            workspace_name="Brain Assistant Workspace",
-            assistant_name="Brain Assistant",
-        )
+    company.brand_settings = BrandSettings(
+        workspace_name="Brain Assistant Workspace",
+        assistant_name="Brain Assistant",
     )
     db.add(
         CompanyMember(
@@ -42,7 +39,13 @@ def create_default_workspace(db: Session, user: User) -> Company:
     return company
 
 
-def current_company(db: Session, user: User, company_id: UUID | None = None) -> Company:
+def current_company(
+    db: Session,
+    user: User,
+    company_id: UUID | None = None,
+    *,
+    create_if_missing: bool = False,
+) -> Company:
     query = select(CompanyMember).where(CompanyMember.user_id == user.id, CompanyMember.status == "active")
     if company_id is not None:
         query = query.where(CompanyMember.company_id == company_id)
@@ -50,6 +53,11 @@ def current_company(db: Session, user: User, company_id: UUID | None = None) -> 
     if member is None:
         if company_id is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        if not create_if_missing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Create or join a workspace before opening the dashboard.",
+            )
         company = create_default_workspace(db, user)
         db.commit()
         db.refresh(company)
@@ -85,7 +93,11 @@ def require_company_admin(db: Session, user: User, company: Company) -> CompanyM
 
 def ensure_brand_settings(db: Session, company: Company) -> BrandSettings:
     if company.brand_settings is None:
-        company.brand_settings = BrandSettings(company_id=company.id)
+        existing = db.scalar(select(BrandSettings).where(BrandSettings.company_id == company.id))
+        if existing is not None:
+            company.brand_settings = existing
+            return existing
+        company.brand_settings = BrandSettings()
         db.flush()
     return company.brand_settings
 

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -21,6 +21,7 @@ from app.schemas.settings import (
 from app.services.auth import audit_event, create_invitation_for_member
 from app.services.settings import (
     active_workspace_memberships,
+    create_default_workspace,
     create_member,
     current_company,
     ensure_brand_settings,
@@ -33,16 +34,9 @@ from app.services.settings import (
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-@router.get("", response_model=SettingsPublic)
-def get_settings(
-    company_id: UUID | None = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> SettingsPublic:
-    company = current_company(db, current_user, company_id)
+def settings_public(db: Session, current_user: User, company) -> SettingsPublic:
     brand = ensure_brand_settings(db, company)
-    db.commit()
-    db.refresh(company)
+    db.flush()
     memberships = active_workspace_memberships(db, current_user)
     current_member = next((member for member in memberships if member.company_id == company.id), None)
     return SettingsPublic(
@@ -61,6 +55,40 @@ def get_settings(
         ],
         current_role=current_member.role if current_member else "administrator",
     )
+
+
+@router.get("", response_model=SettingsPublic)
+def get_settings(
+    company_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SettingsPublic:
+    company = current_company(db, current_user, company_id)
+    response = settings_public(db, current_user, company)
+    db.commit()
+    return response
+
+
+@router.post("/workspaces", response_model=SettingsPublic, status_code=status.HTTP_201_CREATED)
+def create_workspace(
+    request: Request,
+    payload: CompanyUpdateRequest | None = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SettingsPublic:
+    company = create_default_workspace(db, current_user)
+    if payload is not None:
+        update_company(company, payload)
+    audit_event(
+        db,
+        event_type="workspace_created",
+        request=request,
+        user_id=current_user.id,
+        metadata={"company_id": str(company.id)},
+    )
+    response = settings_public(db, current_user, company)
+    db.commit()
+    return response
 
 
 @router.patch("/user", response_model=UserPublic)
@@ -122,7 +150,7 @@ def add_member(
 ) -> MemberPublic:
     company = current_company(db, current_user, company_id)
     require_company_admin(db, current_user, company)
-    if current_user.email_verified_at is None:
+    if not current_user.email_verified:
         raise HTTPException(status_code=403, detail="Verify your email before inviting workspace members")
     member = create_member(db, company, current_user, payload)
     create_invitation_for_member(db, member)

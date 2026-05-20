@@ -23,9 +23,11 @@ class Settings(BaseSettings):
 
     auth_provider: str = Field(default="local", alias="AUTH_PROVIDER")
     keycloak_base_url: str = Field(default="", alias="KEYCLOAK_BASE_URL")
+    keycloak_internal_base_url: str = Field(default="", alias="KEYCLOAK_INTERNAL_BASE_URL")
     keycloak_realm: str = Field(default="", alias="KEYCLOAK_REALM")
     keycloak_client_id: str = Field(default="", alias="KEYCLOAK_CLIENT_ID")
     keycloak_jwks_url: str = Field(default="", alias="KEYCLOAK_JWKS_URL")
+    keycloak_require_verified_email: bool = Field(default=False, alias="KEYCLOAK_REQUIRE_VERIFIED_EMAIL")
 
     backend_cors_origins: str = Field(default="", alias="BACKEND_CORS_ORIGINS")
     auth_cookie_name: str = "brain_assistant_refresh_token"
@@ -122,7 +124,19 @@ class Settings(BaseSettings):
 
     @property
     def keycloak_effective_jwks_url(self) -> str:
-        return self.keycloak_jwks_url or f"{self.keycloak_issuer}/protocol/openid-connect/certs"
+        if self.keycloak_jwks_url:
+            return self.keycloak_jwks_url
+        base_url = self.keycloak_internal_base_url or self.keycloak_base_url
+        if not base_url or not self.keycloak_realm:
+            return ""
+        return f"{base_url.rstrip('/')}/realms/{self.keycloak_realm}/protocol/openid-connect/certs"
+
+    @property
+    def keycloak_token_endpoint(self) -> str:
+        base_url = self.keycloak_internal_base_url or self.keycloak_base_url
+        if not base_url or not self.keycloak_realm:
+            return ""
+        return f"{base_url.rstrip('/')}/realms/{self.keycloak_realm}/protocol/openid-connect/token"
 
 
 @lru_cache
