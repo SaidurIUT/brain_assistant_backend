@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import settings
 from app.core.datetime import utc_now
 from app.db.session import Base
 from app.models.common import TimestampMixin
@@ -40,6 +41,8 @@ class User(Base, TimestampMixin):
 
     @property
     def email_verified(self) -> bool:
+        if settings.auth_provider == "keycloak" and not settings.keycloak_require_verified_email:
+            return True
         return self.email_verified_at is not None
 
 
