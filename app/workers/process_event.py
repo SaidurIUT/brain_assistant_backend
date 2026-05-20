@@ -227,7 +227,8 @@ def process_chatwoot_event(self, event_id: str) -> None:
 
             system_prompt = resolve_prompt_content_by_company_id(db, connection["company_id"])
             query_result = sync_query_with_confidence(
-                question, connection["company_id"], system_prompt
+                question, connection["company_id"], system_prompt,
+                search_query=event.content or "",
             )
             reply = _choose_reply(query_result, _clean_reply)
 
