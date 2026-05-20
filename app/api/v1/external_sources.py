@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models import ExternalSourceConnection, User
+from app.models import ExternalSourceConnection, ExternalSourceItem, User
 from app.schemas.auth import MessageResponse
 from app.schemas.external_sources import (
     ExternalSourceConnectionPublic,
@@ -48,6 +48,18 @@ def connection_public(record: ExternalSourceConnection) -> ExternalSourceConnect
             **record.__dict__,
             "selected_folder_count": len(record.folders),
             "latest_sync_run": latest,
+        }
+    )
+
+
+def item_public(record: ExternalSourceItem) -> ExternalSourceItemPublic:
+    knowledge_document = record.knowledge_document
+    return ExternalSourceItemPublic.model_validate(
+        {
+            **record.__dict__,
+            "extraction_status": knowledge_document.status if knowledge_document else None,
+            "extracted_char_count": knowledge_document.char_count if knowledge_document else None,
+            "extraction_error": knowledge_document.error_message if knowledge_document else None,
         }
     )
 
@@ -264,7 +276,7 @@ def list_external_source_items(
 ) -> list[ExternalSourceItemPublic]:
     company = current_company(db, current_user, company_id)
     connection = connection_for_company(db, company_id=company.id, connection_id=connection_id)
-    return [ExternalSourceItemPublic.model_validate(item) for item in list_items(db, connection=connection)]
+    return [item_public(item) for item in list_items(db, connection=connection)]
 
 
 @router.delete("/connections/{connection_id}", response_model=MessageResponse)
