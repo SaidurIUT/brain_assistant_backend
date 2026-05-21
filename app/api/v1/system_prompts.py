@@ -15,12 +15,13 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import MessageResponse
-from app.schemas.system_prompts import SystemPromptPublic, SystemPromptUpsertRequest
+from app.schemas.system_prompts import SystemPromptPublic, SystemPromptRevisionPublic, SystemPromptUpsertRequest
 from app.services.auth import audit_event
 from app.services.settings import current_company, require_company_admin
 from app.services.system_prompts import (
     delete_prompt_for_company,
     get_prompt_for_company,
+    list_revisions_for_company,
     prompt_public_dict,
     upsert_prompt_for_company,
 )
@@ -62,6 +63,20 @@ def upsert_system_prompt(
     db.commit()
     db.refresh(record)
     return SystemPromptPublic.model_validate(prompt_public_dict(record, company))
+
+
+@router.get("/history", response_model=list[SystemPromptRevisionPublic])
+def read_system_prompt_history(
+    company_id: UUID | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[SystemPromptRevisionPublic]:
+    company = current_company(db, current_user, company_id)
+    return [
+        SystemPromptRevisionPublic.model_validate(r)
+        for r in list_revisions_for_company(db, company, limit=limit)
+    ]
 
 
 @router.delete("", response_model=MessageResponse)

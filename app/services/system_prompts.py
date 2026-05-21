@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Company, CompanySystemPrompt, User
+from app.models.system_prompts import CompanySystemPromptRevision
 
 # Built-in default. Lifted out of process_event so the API can serve it on
 # GET when a tenant has no custom prompt set yet.
@@ -57,7 +58,29 @@ def upsert_prompt_for_company(
         record.content = content
         record.updated_by_user_id = user.id
     db.flush()
+
+    revision = CompanySystemPromptRevision(
+        company_id=company.id,
+        content=content,
+        updated_by_user_id=user.id,
+    )
+    db.add(revision)
+    db.flush()
+
     return record
+
+
+def list_revisions_for_company(
+    db: Session, company: Company, limit: int = 20
+) -> list[CompanySystemPromptRevision]:
+    return list(
+        db.scalars(
+            select(CompanySystemPromptRevision)
+            .where(CompanySystemPromptRevision.company_id == company.id)
+            .order_by(CompanySystemPromptRevision.created_at.desc())
+            .limit(limit)
+        )
+    )
 
 
 def delete_prompt_for_company(db: Session, company: Company) -> bool:

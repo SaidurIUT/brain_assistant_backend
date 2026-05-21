@@ -17,6 +17,18 @@ class SystemPromptUpsertRequest(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
 
 
+class SystemPromptRevisionPublic(BaseModel):
+    """One entry in the version history list."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    company_id: UUID
+    content: str
+    updated_by_user_id: UUID | None
+    created_at: datetime
+
+
 class SystemPromptPublic(BaseModel):
     """Response for GET / PUT.
 

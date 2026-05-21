@@ -8,6 +8,30 @@ from app.db.session import Base
 from app.models.common import TimestampMixin
 
 
+class CompanySystemPromptRevision(Base, TimestampMixin):
+    """Immutable snapshot of a system prompt saved every time an admin hits PUT.
+
+    Never updated — only inserted. T4 (rollback) will read these rows to let
+    an admin restore a prior version.
+    """
+
+    __tablename__ = "company_system_prompt_revisions"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
 class CompanySystemPrompt(Base, TimestampMixin):
     """The system prompt each tenant's bot uses when generating customer replies.
 
