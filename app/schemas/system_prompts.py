@@ -6,6 +6,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class SystemPromptRollbackRequest(BaseModel):
+    """Body for POST /api/v1/system-prompt/rollback."""
+
+    revision_id: UUID
+
+
 class SystemPromptUpsertRequest(BaseModel):
     """Body for PUT /api/v1/system-prompt.
 
