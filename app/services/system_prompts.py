@@ -4,6 +4,9 @@ The bot worker resolves a tenant's prompt via `resolve_prompt_content` —
 returns the custom prompt if set, otherwise the built-in default.
 """
 
+from uuid import UUID
+
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -68,6 +71,24 @@ def upsert_prompt_for_company(
     db.flush()
 
     return record
+
+
+def rollback_to_revision(
+    db: Session, *, company: Company, user: User, revision_id: UUID
+) -> CompanySystemPrompt:
+    """Restore a past revision as the active prompt.
+
+    Verifies the revision belongs to this company, then upserts it as the
+    active prompt. upsert_prompt_for_company also writes a new revision row
+    so the rollback itself appears in the history trail.
+    """
+    revision = db.get(CompanySystemPromptRevision, revision_id)
+    if revision is None or revision.company_id != company.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Revision not found",
+        )
+    return upsert_prompt_for_company(db, company=company, user=user, content=revision.content)
 
 
 def list_revisions_for_company(

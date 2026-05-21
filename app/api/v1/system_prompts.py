@@ -15,7 +15,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import MessageResponse
-from app.schemas.system_prompts import SystemPromptPublic, SystemPromptRevisionPublic, SystemPromptUpsertRequest
+from app.schemas.system_prompts import SystemPromptPublic, SystemPromptRevisionPublic, SystemPromptRollbackRequest, SystemPromptUpsertRequest
 from app.services.auth import audit_event
 from app.services.settings import current_company, require_company_admin
 from app.services.system_prompts import (
@@ -23,6 +23,7 @@ from app.services.system_prompts import (
     get_prompt_for_company,
     list_revisions_for_company,
     prompt_public_dict,
+    rollback_to_revision,
     upsert_prompt_for_company,
 )
 
@@ -59,6 +60,29 @@ def upsert_system_prompt(
         request=request,
         user_id=current_user.id,
         metadata={"company_id": str(company.id), "length": len(payload.content)},
+    )
+    db.commit()
+    db.refresh(record)
+    return SystemPromptPublic.model_validate(prompt_public_dict(record, company))
+
+
+@router.post("/rollback", response_model=SystemPromptPublic)
+def rollback_system_prompt(
+    payload: SystemPromptRollbackRequest,
+    request: Request,
+    company_id: UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SystemPromptPublic:
+    company = current_company(db, current_user, company_id)
+    require_company_admin(db, current_user, company)
+    record = rollback_to_revision(db, company=company, user=current_user, revision_id=payload.revision_id)
+    audit_event(
+        db,
+        event_type="system_prompt_rolled_back",
+        request=request,
+        user_id=current_user.id,
+        metadata={"company_id": str(company.id), "revision_id": str(payload.revision_id)},
     )
     db.commit()
     db.refresh(record)

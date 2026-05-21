@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 from uuid import uuid4
 
-from app.services.system_prompts import list_revisions_for_company, upsert_prompt_for_company
+from app.services.system_prompts import list_revisions_for_company, rollback_to_revision, upsert_prompt_for_company
 
 
 def _make_company():
@@ -103,3 +103,62 @@ def test_list_revisions_passes_limit() -> None:
     list_revisions_for_company(db, company, limit=5)
 
     db.scalars.assert_called_once()
+
+
+# ─── rollback_to_revision ─────────────────────────────────────────────────
+
+
+def test_rollback_restores_revision_content() -> None:
+    from app.models.system_prompts import CompanySystemPromptRevision
+
+    company = _make_company()
+    user = _make_user()
+    rev_id = uuid4()
+    revision = CompanySystemPromptRevision(
+        id=rev_id, company_id=company.id, content="Restored prompt", updated_by_user_id=None
+    )
+
+    db = _make_db()
+    db.get.return_value = revision
+
+    rollback_to_revision(db, company=company, user=user, revision_id=rev_id)
+
+    added_objects = [c.args[0] for c in db.add.call_args_list]
+    contents = [getattr(obj, "content", None) for obj in added_objects]
+    assert "Restored prompt" in contents
+
+
+def test_rollback_raises_404_for_unknown_revision() -> None:
+    import pytest
+    from fastapi import HTTPException
+
+    company = _make_company()
+    user = _make_user()
+    db = _make_db()
+    db.get.return_value = None
+
+    with pytest.raises(HTTPException) as exc_info:
+        rollback_to_revision(db, company=company, user=user, revision_id=uuid4())
+
+    assert exc_info.value.status_code == 404
+
+
+def test_rollback_raises_404_for_other_company_revision() -> None:
+    import pytest
+    from fastapi import HTTPException
+    from app.models.system_prompts import CompanySystemPromptRevision
+
+    company = _make_company()
+    user = _make_user()
+    other_company_id = uuid4()
+    revision = CompanySystemPromptRevision(
+        id=uuid4(), company_id=other_company_id, content="Other company's prompt", updated_by_user_id=None
+    )
+
+    db = _make_db()
+    db.get.return_value = revision
+
+    with pytest.raises(HTTPException) as exc_info:
+        rollback_to_revision(db, company=company, user=user, revision_id=revision.id)
+
+    assert exc_info.value.status_code == 404
