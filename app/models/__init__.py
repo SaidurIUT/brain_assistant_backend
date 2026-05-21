@@ -11,7 +11,7 @@ from app.models.external_sources import (
 )
 from app.models.jobs import BackgroundJob
 from app.models.knowledge import KnowledgeDocument, WebsiteCrawlCandidate, WebsiteCrawlJob
-from app.models.system_prompts import CompanySystemPrompt
+from app.models.system_prompts import CompanySystemPrompt, CompanySystemPromptRevision
 from app.models.uploads import CompanyUpload
 
 __all__ = [
@@ -28,6 +28,7 @@ __all__ = [
     "Company",
     "CompanyMember",
     "CompanySystemPrompt",
+    "CompanySystemPromptRevision",
     "CompanyUpload",
     "ExternalSourceConnection",
     "ExternalSourceFolder",
