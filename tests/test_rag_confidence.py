@@ -75,6 +75,24 @@ def test_real_answer_not_flagged() -> None:
     assert not _is_insufficient_answer(answer)
 
 
+def test_detects_lightrag_no_context_marker() -> None:
+    answer = "Sorry, I'm not able to provide an answer to that question.[no-context]"
+    assert _is_insufficient_answer(answer)
+
+
+def test_detects_not_able_to_provide() -> None:
+    assert _is_insufficient_answer("I'm not able to provide an answer to that.")
+
+
+def test_detects_dont_have_any_information() -> None:
+    assert _is_insufficient_answer("I don't have any information about that.")
+
+
+def test_no_context_marker_ignores_length_guard() -> None:
+    long_answer = ("filler text " * 50) + "[no-context]"
+    assert _is_insufficient_answer(long_answer)
+
+
 def test_long_answer_mentioning_gap_not_flagged() -> None:
     # A real answer that happens to mention a gap mid-sentence should not trigger
     answer = (

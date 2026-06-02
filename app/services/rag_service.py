@@ -48,8 +48,11 @@ class QueryResult:
 
 
 _INSUFFICIENT_ANSWER_RE = re.compile(
-    r"don.t have enough|no (relevant )?information|cannot (find|answer|provide)|"
-    r"not (enough|sufficient|covered)|unable to (find|answer|provide)|"
+    r"don.t have (enough|any|sufficient)|"
+    r"no (relevant |available )?information|"
+    r"cannot (find|answer|provide)|"
+    r"(not able|unable) to (find|answer|provide)|"
+    r"not (enough|sufficient|covered)|"
     r"no relevant (content|context|data)",
     re.IGNORECASE,
 )
@@ -58,9 +61,15 @@ _INSUFFICIENT_ANSWER_RE = re.compile(
 def _is_insufficient_answer(answer: str) -> bool:
     """True when the LLM signals it couldn't answer from the retrieved context.
 
-    The length guard (<250 chars) prevents false positives when the LLM
-    mentions a gap mid-answer as part of a real, substantive reply.
+    Two paths:
+      - LightRAG appends "[no-context]" when zero chunks were retrieved.
+        This marker is deterministic so we trust it without a length guard.
+      - Otherwise we match common 'I can't answer' phrases, gated by a
+        length cap to prevent false positives in real substantive replies
+        that mention a gap mid-answer.
     """
+    if "[no-context]" in answer.lower():
+        return True
     return bool(_INSUFFICIENT_ANSWER_RE.search(answer)) and len(answer.strip()) < 250
 
 
