@@ -48,8 +48,11 @@ class QueryResult:
 
 
 _INSUFFICIENT_ANSWER_RE = re.compile(
-    r"don.t have enough|no (relevant )?information|cannot (find|answer|provide)|"
-    r"not (enough|sufficient|covered)|unable to (find|answer|provide)|"
+    r"don.t have (enough|any|sufficient)|"
+    r"no (relevant |available )?information|"
+    r"cannot (find|answer|provide)|"
+    r"(not able|unable) to (find|answer|provide)|"
+    r"not (enough|sufficient|covered)|"
     r"no relevant (content|context|data)",
     re.IGNORECASE,
 )
@@ -58,9 +61,15 @@ _INSUFFICIENT_ANSWER_RE = re.compile(
 def _is_insufficient_answer(answer: str) -> bool:
     """True when the LLM signals it couldn't answer from the retrieved context.
 
-    The length guard (<250 chars) prevents false positives when the LLM
-    mentions a gap mid-answer as part of a real, substantive reply.
+    Two paths:
+      - LightRAG appends "[no-context]" when zero chunks were retrieved.
+        This marker is deterministic so we trust it without a length guard.
+      - Otherwise we match common 'I can't answer' phrases, gated by a
+        length cap to prevent false positives in real substantive replies
+        that mention a gap mid-answer.
     """
+    if "[no-context]" in answer.lower():
+        return True
     return bool(_INSUFFICIENT_ANSWER_RE.search(answer)) and len(answer.strip()) < 250
 
 
@@ -207,24 +216,21 @@ async def query_with_confidence(
     system_prompt_override: str | None = None,
     search_query: str | None = None,
 ) -> QueryResult:
-    """Probe retrieval before paying for LLM generation.
+    """Single-pass confidence-gated query — one embed + one vector search.
 
-    search_query is used for the vector search step only — pass the bare
-    customer message here so conversation history doesn't dilute the embedding.
-    question (which may include history) is used for LLM answer generation.
-    Falls back to question if search_query is not provided.
+    Previously called aquery_data (embed + search) then aquery (embed + search
+    + LLM), paying for two Ollama round-trips per message. Now uses a single
+    aquery call. The cosine threshold still filters low-relevance chunks at the
+    DB level. _is_insufficient_answer catches the case where no useful chunks
+    were found and the LLM signals it can't answer.
+
+    search_query kept for API compatibility but unused — aquery handles
+    retrieval and generation in one pass.
     """
     rag = _make_rag(company_id)
     user_prompt = system_prompt_override or _CUSTOMER_SUPPORT_PROMPT
-    retrieval_query = search_query or question
     await rag.initialize_storages()
     try:
-        probe_param = QueryParam(mode="naive", enable_rerank=False)
-        data_result = await rag.aquery_data(retrieval_query, param=probe_param)
-        chunk_count = _evaluate_retrieval(data_result)
-        if chunk_count < settings.rag_min_chunks_for_answer:
-            return QueryResult(answer=None, confident=False, chunk_count=chunk_count)
-
         answer = await rag.aquery(
             question,
             param=QueryParam(
@@ -235,8 +241,8 @@ async def query_with_confidence(
         )
         answer = answer or ""
         if _is_insufficient_answer(answer):
-            return QueryResult(answer=None, confident=False, chunk_count=chunk_count)
-        return QueryResult(answer=answer, confident=True, chunk_count=chunk_count)
+            return QueryResult(answer=None, confident=False, chunk_count=0)
+        return QueryResult(answer=answer, confident=True, chunk_count=1)
     finally:
         await rag.finalize_storages()
 
